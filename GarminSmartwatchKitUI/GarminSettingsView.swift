@@ -158,7 +158,12 @@ struct GarminSettingsView: View {
         } header: {
             Text(LocalizedString("Watch Apps", comment: "Garmin settings: watch apps section"))
         } footer: {
-            Text(LocalizedString("Turn off Send to Watchface to use only a datafield. Complication is a watch app that puts the values in any watchface's complications. Trio App is a sideloaded watch app with a glance.", comment: "Garmin settings: watch apps footer"))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(LocalizedString("Turn off Send to Watchface to use only a datafield. Complication is a watch app that puts the values in any watchface's complications.", comment: "Garmin settings: watch apps footer"))
+                if model.settings.watchface == .trioApp {
+                    Text(LocalizedString("Trio App isn't in the Connect IQ store: sideload it onto your watch.", comment: "Garmin settings: Trio app sideload note"))
+                }
+            }
         }
     }
 
