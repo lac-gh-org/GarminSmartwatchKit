@@ -172,19 +172,16 @@ public extension GarminWatchState {
         public var secondaryAttributeChoice: String
         /// "dynamic" or "static", the wire format the watchface reads.
         public var glucoseColorScheme: String
-        /// SwissAlpine and the complication app show up to 24 readings; the others one.
-        public var sendsHistory: Bool
+        /// The most readings to send, newest included (`GarminWatchface.historyCount`).
+        public var historyCount: Int
 
-        public init(primaryAttributeChoice: String, secondaryAttributeChoice: String, glucoseColorScheme: String, sendsHistory: Bool) {
+        public init(primaryAttributeChoice: String, secondaryAttributeChoice: String, glucoseColorScheme: String, historyCount: Int) {
             self.primaryAttributeChoice = primaryAttributeChoice
             self.secondaryAttributeChoice = secondaryAttributeChoice
             self.glucoseColorScheme = glucoseColorScheme
-            self.sendsHistory = sendsHistory
+            self.historyCount = historyCount
         }
     }
-
-    /// The most readings a watch app gets.
-    static let maximumHistoryCount = 24
 
     /// Newest reading first, like dev's GarminManager: the first entry carries
     /// every value, the others only their time and glucose. Empty without readings.
@@ -222,7 +219,7 @@ public extension GarminWatchState {
         first.displaySecondaryAttributeChoice = options.secondaryAttributeChoice
         first.glucoseColorScheme = options.glucoseColorScheme
 
-        let older = options.sendsHistory ? readings.dropFirst().prefix(maximumHistoryCount - 1) : []
+        let older = readings.dropFirst().prefix(max(options.historyCount - 1, 0))
         return [first] + older.map { reading in
             var state = GarminWatchState()
             state.date = milliseconds(reading.date)

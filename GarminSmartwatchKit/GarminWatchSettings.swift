@@ -69,27 +69,38 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
     /// Not a watchface but a Connect IQ watch app that republishes the payload as
     /// complications, so any watchface with complication slots can show the data.
     case complication
+    /// Not a watchface but a sideloaded Connect IQ watch app with a Glance
+    /// (mountrcg/GarminAppTrioPerso): a glucose gauge, a trend graph and IOB.
+    case trioApp
 
     public var displayName: String {
         switch self {
         case .trio: return LocalizedString("Trio", comment: "Garmin watchface: Trio")
         case .swissalpine: return LocalizedString("Swissalpine", comment: "Garmin watchface: SwissAlpine")
         case .complication: return LocalizedString("Complication", comment: "Garmin watch app: complications")
+        case .trioApp: return LocalizedString("Trio App", comment: "Garmin watch app: Trio app with glance")
         }
     }
 
-    /// The Connect IQ store apps (live builds).
+    /// The Connect IQ store apps (live builds); the Trio app is sideloaded.
     public var watchfaceUUID: UUID? {
         switch self {
         case .trio: return UUID(uuidString: "7a121867-140e-41ba-9982-2e82e2aa6579")
         case .swissalpine: return UUID(uuidString: "4cea4efd-4aaf-4db4-8891-ef36dde14303")
         case .complication: return UUID(uuidString: "0986fd19-604b-4bcb-a931-6f8621738682")
+        case .trioApp: return UUID(uuidString: "087bee51-ad92-4296-b03b-18f101b5f751")
         }
     }
 
-    /// SwissAlpine and the complication app show up to 24 readings; Trio's watchface one.
-    public var showsHistory: Bool {
-        self == .swissalpine || self == .complication
+    /// The most readings the watch app shows, newest included. The host's snapshot
+    /// holds only `SmartwatchStatusSnapshot.historyInterval` (3 h) of readings, so
+    /// the Trio app's 48 (4 h) get about 36 at most.
+    public var historyCount: Int {
+        switch self {
+        case .trio: return 1
+        case .swissalpine, .complication: return 24
+        case .trioApp: return 48
+        }
     }
 }
 
