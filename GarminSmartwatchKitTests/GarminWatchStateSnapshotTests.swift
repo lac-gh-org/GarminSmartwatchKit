@@ -122,7 +122,7 @@ import Testing
         var withHistory = options
         withHistory.historyCount = GarminWatchface.trioApp.historyCount
         let history = (0 ..< 37).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
-        let states = GarminWatchState.states(from: snapshot(history: history), options: withHistory, now: now)
+        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
 
         #expect(states.count == 37, "fewer readings than 48: all of them")
         #expect(states[0].sgv == 100)
@@ -132,7 +132,7 @@ import Testing
 
     @Test("Trio's watchface gets only the newest reading") func noHistory() {
         let history = (0 ..< 12).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
-        let states = GarminWatchState.states(from: snapshot(history: history), options: options, now: now)
+        let states = GarminWatchState.states(from: hostData(history: history), options: options, now: now)
         #expect(states.count == 1)
     }
 
