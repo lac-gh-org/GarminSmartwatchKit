@@ -23,7 +23,7 @@ extension GarminSmartwatchManager: @retroactive SmartwatchManagerUI {
 
     @MainActor
     public func settingsViewController(bluetoothProvider: BluetoothProvider, displayGlucosePreference: DisplayGlucosePreference, colorPalette: LoopUIColorPalette, allowDebugFeatures: Bool) -> SmartwatchManagerViewController {
-        GarminSettingsNavigationController(manager: self, allowDebugFeatures: allowDebugFeatures)
+        GarminSettingsNavigationController(manager: self)
     }
 }
 
@@ -31,10 +31,10 @@ final class GarminSettingsNavigationController: UINavigationController, Smartwat
     weak var smartwatchManagerOnboardingDelegate: SmartwatchManagerOnboardingDelegate?
     weak var completionDelegate: CompletionDelegate?
 
-    init(manager: GarminSmartwatchManager, allowDebugFeatures: Bool) {
+    init(manager: GarminSmartwatchManager) {
         super.init(nibName: nil, bundle: nil)
         let model = GarminSettingsModel(manager: manager)
-        let view = GarminSettingsView(model: model, allowDebugFeatures: allowDebugFeatures) { [weak self] in
+        let view = GarminSettingsView(model: model) { [weak self] in
             guard let self else { return }
             self.completionDelegate?.completionNotifyingDidComplete(self)
         }

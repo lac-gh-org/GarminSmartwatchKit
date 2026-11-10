@@ -9,6 +9,9 @@ import Combine
 import ConnectIQ
 import Foundation
 import LoopKit
+#if targetEnvironment(simulator) || GARMIN_MOCK_CONNECT
+    import UIKit
+#endif
 
 /// Garmin (Connect IQ) as a watch plugin. **Experimental.**
 ///
@@ -227,7 +230,7 @@ public final class GarminSmartwatchManager: NSObject {
 
     // MARK: - Simulator Support
 
-    #if targetEnvironment(simulator)
+    #if targetEnvironment(simulator) || GARMIN_MOCK_CONNECT
         /// Mock IQDevice class for simulator testing
         /// Minimal implementation just for testing - no actual Garmin functionality
         public class MockIQDevice: IQDevice {
@@ -263,6 +266,32 @@ public final class GarminSmartwatchManager: NSObject {
                     modelName: "Enduro 3"
                 )
             }
+
+            /// A mock Garmin Connect's answer: `<scheme>://device-select-resp?name=…&model=…&uuid=…`.
+            static func parseSelection(from url: URL) -> [IQDevice] {
+                let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+                guard let name = value("name") else { return [] }
+                return [MockIQDevice(
+                    uuid: value("uuid").flatMap(UUID.init(uuidString:)) ?? simulatedUUID,
+                    friendlyName: name,
+                    modelName: value("model") ?? name
+                )]
+            }
+        }
+
+        /// Garmin Connect can't run in the simulator (and a local test build can set
+        /// `GARMIN_MOCK_CONNECT` to use the mock on a phone): a mock Garmin Connect app
+        /// (`garminconnect-mock://`) answers through the host's URL scheme like the real one,
+        /// so the app switch and the callback are the same. Without it, the simulated watch is chosen.
+        private func showMockDeviceSelection() {
+            let scheme = Self.hostURLScheme ?? ""
+            let fallback = URL(string: "\(scheme)://device-select-resp?name=Enduro%203%20Sim&model=Enduro%203")!
+            guard let mock = URL(string: "garminconnect-mock://device-select?scheme=\(scheme)") else { return }
+            UIApplication.shared.open(mock) { [weak self] opened in
+                guard !opened else { return }
+                _ = self?.watchHostDidReceiveURL(fallback)
+            }
         }
     #endif
 
@@ -285,7 +314,11 @@ public final class GarminSmartwatchManager: NSObject {
     /// - Parameter url: The URL provided by Garmin Connect containing device selection info.
     private func parseDevices(for url: URL) {
         connectMobileIsAvailable()
-        let parsed = connectIQ?.parseDeviceSelectionResponse(from: url) as? [IQDevice]
+        #if targetEnvironment(simulator) || GARMIN_MOCK_CONNECT
+            let parsed: [IQDevice]? = MockIQDevice.parseSelection(from: url)
+        #else
+            let parsed = connectIQ?.parseDeviceSelectionResponse(from: url) as? [IQDevice]
+        #endif
         devices = parsed ?? []
         deviceSelectionPromise?(.success(devices))
         deviceSelectionPromise = nil
@@ -355,7 +388,11 @@ public final class GarminSmartwatchManager: NSObject {
                 return
             }
             self.deviceSelectionPromise = promise
-            self.connectIQ?.showDeviceSelection()
+            #if targetEnvironment(simulator) || GARMIN_MOCK_CONNECT
+                self.showMockDeviceSelection()
+            #else
+                self.connectIQ?.showDeviceSelection()
+            #endif
         }
         .timeout(.seconds(120), scheduler: DispatchQueue.main)
         .replaceEmpty(with: [])
