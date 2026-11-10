@@ -5,7 +5,7 @@ import Testing
 
 @testable import GarminSmartwatchKit
 
-@Suite("Garmin watch state from the host's snapshot") struct GarminWatchStateSnapshotTests {
+@Suite("Garmin watch state from what the host returns") struct GarminWatchStateSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let options = GarminWatchState.DisplayOptions(
         primaryAttributeChoice: "cob",
@@ -14,43 +14,64 @@ import Testing
         historyCount: GarminWatchface.trio.historyCount
     )
 
-    private func reading(minutesAgo: Double, _ mgdL: Double, _ trend: SmartwatchGlucoseTrend? = .flat)
-        -> SmartwatchGlucoseReading
-    {
-        SmartwatchGlucoseReading(date: now.addingTimeInterval(-minutesAgo * 60), milligramsPerDeciliter: mgdL, trend: trend)
+    private func reading(minutesAgo: Double, _ mgdL: Double, _ trend: GlucoseTrend? = .flat) -> StoredGlucoseSample {
+        StoredGlucoseSample(
+            startDate: now.addingTimeInterval(-minutesAgo * 60),
+            quantity: LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: mgdL),
+            trend: trend
+        )
     }
 
     private func milliseconds(minutesAgo: Double) -> UInt64 {
         UInt64(now.addingTimeInterval(-minutesAgo * 60).timeIntervalSince1970 * 1000)
     }
 
-    private func snapshot(
-        history: [SmartwatchGlucoseReading],
-        unit: SmartwatchGlucoseUnit = .millimolesPerLiter,
-        therapy: SmartwatchTherapyContext? = nil
-    ) -> SmartwatchStatusSnapshot {
-        SmartwatchStatusSnapshot(
+    private func mgdL(_ value: Double) -> LoopQuantity {
+        LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: value)
+    }
+
+    private func hostData(
+        history: [StoredGlucoseSample],
+        unit: LoopUnit = .millimolesPerLiter,
+        lastLoop: Date? = nil,
+        eventualGlucose: LoopQuantity? = nil,
+        sensitivityRatio: Double? = nil,
+        scheduledBasalRate: Double? = nil,
+        tempBasalRate: Double? = nil,
+        insulinSensitivity: LoopQuantity? = nil,
+        correctionRange: ClosedRange<LoopQuantity>? = nil
+    ) -> GarminHostData {
+        GarminHostData(
             displayUnit: unit,
-            glucose: history.last,
-            glucoseHistory: history,
-            insulinOnBoard: 1.234,
-            carbsOnBoard: 22,
-            lastLoopCompleted: now.addingTimeInterval(-120),
-            therapy: therapy
+            glucoseSamples: history,
+            loopState: SmartwatchLoopState(
+                lastLoopCompleted: lastLoop ?? now.addingTimeInterval(-120),
+                isClosedLoop: true,
+                insulinOnBoard: InsulinValue(startDate: now, value: 1.234),
+                carbsOnBoard: CarbValue(startDate: now, endDate: now, value: 22),
+                eventualGlucose: eventualGlucose,
+                sensitivityRatio: sensitivityRatio
+            ),
+            scheduledBasalRate: scheduledBasalRate.map { LoopQuantity(unit: .internationalUnitsPerHour, doubleValue: $0) },
+            tempBasal: tempBasalRate.map {
+                DoseEntry(type: .tempBasal, startDate: now, endDate: now.addingTimeInterval(1800), value: $0, unit: .unitsPerHour, decisionId: nil)
+            },
+            insulinSensitivity: insulinSensitivity,
+            correctionRange: correctionRange
         )
     }
 
     @Test("The first entry carries every value") func firstEntry() {
-        let therapy = SmartwatchTherapyContext(
-            tempBasalRate: 0.35,
-            scheduledBasalRate: 0.8,
-            insulinSensitivity: 54.4,
-            eventualGlucose: 120.6,
-            sensitivityRatio: 1.1,
-            correctionRange: 100 ... 110
-        )
         let history = [reading(minutesAgo: 10, 100), reading(minutesAgo: 5, 104), reading(minutesAgo: 0, 110, .up)]
-        let states = GarminWatchState.states(from: snapshot(history: history, therapy: therapy), options: options, now: now)
+        let states = GarminWatchState.states(from: hostData(
+            history: history,
+            eventualGlucose: mgdL(120.6),
+            sensitivityRatio: 1.1,
+            scheduledBasalRate: 0.8,
+            tempBasalRate: 0.35,
+            insulinSensitivity: LoopQuantity(unit: .milligramsPerDeciliterPerInternationalUnit, doubleValue: 54.4),
+            correctionRange: mgdL(100) ... mgdL(110)
+        ), options: options, now: now)
 
         #expect(states.count == 1, "no history for the Trio watchface")
         let first = try! #require(states.first)
@@ -73,9 +94,8 @@ import Testing
     }
 
     @Test("Without a temp basal, the scheduled basal") func scheduledBasal() {
-        let therapy = SmartwatchTherapyContext(scheduledBasalRate: 0.8)
         let states = GarminWatchState.states(
-            from: snapshot(history: [reading(minutesAgo: 0, 100)], unit: .milligramsPerDeciliter, therapy: therapy),
+            from: hostData(history: [reading(minutesAgo: 0, 100)], unit: .milligramsPerDeciliter, scheduledBasalRate: 0.8),
             options: options,
             now: now
         )
@@ -88,7 +108,7 @@ import Testing
         var withHistory = options
         withHistory.historyCount = GarminWatchface.swissalpine.historyCount
         let history = (0 ..< 36).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
-        let states = GarminWatchState.states(from: snapshot(history: history), options: withHistory, now: now)
+        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
 
         #expect(states.count == 24)
         #expect(states[0].sgv == 100)
@@ -117,27 +137,47 @@ import Testing
     }
 
     @Test("No loop yet: 31 minutes ago, so the watch shows it as stale") func noLoop() {
-        var snapshot = snapshot(history: [reading(minutesAgo: 0, 100)])
-        snapshot.lastLoopCompleted = nil
-        let states = GarminWatchState.states(from: snapshot, options: options, now: now)
+        var host = hostData(history: [reading(minutesAgo: 0, 100)])
+        host.loopState.lastLoopCompleted = nil
+        let states = GarminWatchState.states(from: host, options: options, now: now)
         #expect(states.first?.date == milliseconds(minutesAgo: 31))
     }
 
     @Test("No readings: nothing to send") func noReadings() {
-        let empty = SmartwatchStatusSnapshot(displayUnit: .milligramsPerDeciliter, glucose: nil)
+        let empty = hostData(history: [], unit: .milligramsPerDeciliter)
         #expect(GarminWatchState.states(from: empty, options: options, now: now).isEmpty)
     }
 
-    @Test("The latest reading counts even without history") func latestOnly() {
+    @Test("Values a host lacks stay out: no sensitivity ratio, no therapy values") func missingValues() {
         let latest = reading(minutesAgo: 0, 98, nil)
-        let snapshot = SmartwatchStatusSnapshot(displayUnit: .milligramsPerDeciliter, glucose: latest)
-        let states = GarminWatchState.states(from: snapshot, options: options, now: now)
+        let states = GarminWatchState.states(from: hostData(history: [latest], unit: .milligramsPerDeciliter), options: options, now: now)
         #expect(states.first?.sgv == 98)
         #expect(states.first?.direction == "--")
+        #expect(states.first?.sensRatio == nil)
+        #expect(states.first?.tbr == nil)
+        #expect(states.first?.isf == nil)
+        #expect(states.first?.eventualBG == nil)
+        #expect(states.first?.targetGlucose == nil)
+    }
+
+    @Test("Values in mmol/L are sent in mg/dL") func mmolValues() {
+        let mmol = { (value: Double) in LoopQuantity(unit: .millimolesPerLiter, doubleValue: value) }
+        let latest = StoredGlucoseSample(startDate: now, quantity: mmol(5.5), trend: .flat)
+        let host = hostData(
+            history: [latest],
+            eventualGlucose: mmol(6.7),
+            insulinSensitivity: LoopQuantity(unit: .millimolesPerLiterPerInternationalUnit, doubleValue: 3),
+            correctionRange: mmol(5.5) ... mmol(6.1)
+        )
+        let first = GarminWatchState.states(from: host, options: options, now: now).first
+        #expect(first?.sgv == 99)
+        #expect(first?.eventualBG == 121)
+        #expect(first?.isf == 54)
+        #expect(first?.targetGlucose == 104, "5.8 mmol/L is 104.49 mg/dL")
     }
 
     @Test("Trends map to Nightscout directions; small IOB stays visible") func directionsAndIOB() {
-        #expect(SmartwatchGlucoseTrend.allCases.map(GarminWatchState.direction) == [
+        #expect(GlucoseTrend.allCases.map(GarminWatchState.direction) == [
             "DoubleUp", "SingleUp", "FortyFiveUp", "Flat", "FortyFiveDown", "SingleDown", "DoubleDown"
         ])
         #expect(GarminWatchState.formattedIOB(0.04) == 0.1)
@@ -171,37 +211,59 @@ import Testing
         #expect(restored.devices.map(GarminDevice.init) == [device])
     }
 
-    @Test("Only data, no remote actions") func capabilities() {
-        #expect(GarminSmartwatchManager.capabilities == [.glucose, .history, .loopStatus, .therapy])
-    }
-
-    @Test("Without a snapshot there is nothing to send") func noSnapshot() {
+    @Test("Before the host data is read there is nothing to send") func noHostData() {
         #expect(GarminSmartwatchManager().watchStateData() == nil)
     }
 }
 
 @Suite("Garmin device alerts") struct GarminDeviceAlertTests {
     private final class Host: SmartwatchManagerDelegate {
-        var issued: [SmartwatchDeviceAlert] = []
-        var retracted: [SmartwatchAlertIdentifier] = []
+        var issued: [Alert] = []
+        var retracted: [Alert.Identifier] = []
+        var logs: [String] = []
         func smartwatchManagerDidUpdateState(_: SmartwatchManager) {}
         func smartwatchManagerWantsDeletion(_: SmartwatchManager) async {}
-        func smartwatchManagerRequestsRefresh(_: SmartwatchManager) {}
-        func smartwatchManager(_: SmartwatchManager, didLogEvent _: SmartwatchDeviceLogEntry) {}
-        func smartwatchManager(_: SmartwatchManager, issueDeviceAlert alert: SmartwatchDeviceAlert) { issued.append(alert) }
-        func smartwatchManager(_: SmartwatchManager, retractDeviceAlert identifier: SmartwatchAlertIdentifier) { retracted.append(identifier) }
+        func deviceManager(_: DeviceManager, logEventForDeviceIdentifier _: String?, type _: DeviceLogEntryType, message: String, completion _: ((Error?) -> Void)?) {
+            logs.append(message)
+        }
+        func issueAlert(_ alert: Alert) async { issued.append(alert) }
+        func retractAlert(identifier: Alert.Identifier) async { retracted.append(identifier) }
+        func doesIssuedAlertExist(identifier _: Alert.Identifier) async throws -> Bool { false }
+        func lookupAllUnretracted(managerIdentifier _: String) async throws -> [PersistedAlert] { [] }
+        func lookupAllUnacknowledgedUnretracted(managerIdentifier _: String) async throws -> [PersistedAlert] { [] }
+        func recordRetractedAlert(_: Alert, at _: Date) async throws {}
+        func smartwatchManagerGlucoseDisplayUnit(_: SmartwatchManager) async -> LoopUnit { .milligramsPerDeciliter }
+        func smartwatchManager(_: SmartwatchManager, glucoseSamplesSince _: Date) async throws -> [StoredGlucoseSample] { [] }
+        func smartwatchManagerLoopState(_: SmartwatchManager) async -> SmartwatchLoopState {
+            SmartwatchLoopState(lastLoopCompleted: nil, isClosedLoop: false)
+        }
+        func smartwatchManagerScheduledBasalRate(_: SmartwatchManager) async -> LoopQuantity? { nil }
+        func smartwatchManagerTempBasal(_: SmartwatchManager) async -> DoseEntry? { nil }
+        func smartwatchManagerInsulinSensitivity(_: SmartwatchManager) async -> LoopQuantity? { nil }
+        func smartwatchManagerCorrectionRange(_: SmartwatchManager) async -> ClosedRange<LoopQuantity>? { nil }
+        func smartwatchManagerOverridePresets(_: SmartwatchManager) async -> [TemporaryPreset] { [] }
+        func smartwatchManagerActiveOverride(_: SmartwatchManager) async -> TemporaryScheduleOverride? { nil }
+        func smartwatchManagerAlertMuteEnd(_: SmartwatchManager) async -> Date? { nil }
+        func smartwatchManagerMaximumBolus(_: SmartwatchManager) async -> Double? { nil }
+        func smartwatchManagerMaximumCarbEntry(_: SmartwatchManager) async -> Double? { nil }
+        func smartwatchManagerSupportedBolusVolumes(_: SmartwatchManager) async -> [Double] { [] }
     }
 
-    @Test("Garmin Connect missing raises a host alert; deleting the plugin retracts it") func connectMobileMissing() async {
+    private func settle() async { try? await Task.sleep(nanoseconds: 100_000_000) }
+
+    @MainActor @Test("Garmin Connect missing raises a time-sensitive host alert; deleting the plugin retracts it") func connectMobileMissing() async {
         let host = Host()
         let manager = GarminSmartwatchManager()
         manager.smartwatchManagerDelegate = host
 
         manager.needsToInstallConnectMobile()
-        #expect(host.issued.map(\.identifier) == [GarminSmartwatchManager.connectMobileMissingAlert])
-        #expect(host.issued.first?.level == .warning)
+        await settle()
+        #expect(host.issued.map(\.identifier) == [GarminSmartwatchManager.connectMobileMissingAlertIdentifier])
+        #expect(host.issued.first?.identifier.managerIdentifier == GarminSmartwatchManager.pluginIdentifier)
+        #expect(host.issued.first?.interruptionLevel == .timeSensitive)
+        #expect(host.issued.first?.backgroundContent.title == "Garmin Connect isn't installed")
 
         await manager.delete()
-        #expect(host.retracted == [GarminSmartwatchManager.connectMobileMissingAlert])
+        #expect(host.retracted == [GarminSmartwatchManager.connectMobileMissingAlertIdentifier])
     }
 }

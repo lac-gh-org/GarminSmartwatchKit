@@ -161,10 +161,44 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
     }
 }
 
-/// Garmin's watch state built only from the host's `SmartwatchStatusSnapshot`,
+/// What the plugin reads from the host for the watch state: the host's Loop types,
+/// as the delegate returns them.
+public struct GarminHostData {
+    public var displayUnit: LoopUnit
+    /// Stored readings, in any order, including user-entered and display-only ones.
+    public var glucoseSamples: [StoredGlucoseSample]
+    public var loopState: SmartwatchLoopState
+    public var scheduledBasalRate: LoopQuantity?
+    public var tempBasal: DoseEntry?
+    public var insulinSensitivity: LoopQuantity?
+    public var correctionRange: ClosedRange<LoopQuantity>?
+
+    public init(
+        displayUnit: LoopUnit,
+        glucoseSamples: [StoredGlucoseSample],
+        loopState: SmartwatchLoopState,
+        scheduledBasalRate: LoopQuantity? = nil,
+        tempBasal: DoseEntry? = nil,
+        insulinSensitivity: LoopQuantity? = nil,
+        correctionRange: ClosedRange<LoopQuantity>? = nil
+    ) {
+        self.displayUnit = displayUnit
+        self.glucoseSamples = glucoseSamples
+        self.loopState = loopState
+        self.scheduledBasalRate = scheduledBasalRate
+        self.tempBasal = tempBasal
+        self.insulinSensitivity = insulinSensitivity
+        self.correctionRange = correctionRange
+    }
+
+    /// How far back the readings reach.
+    public static let historyInterval: TimeInterval = 3 * 60 * 60
+}
+
+/// Garmin's watch state built only from what the host's delegate returns,
 /// so the Garmin plugin needs nothing from Trio's stores.
 public extension GarminWatchState {
-    /// What the snapshot doesn't carry: Trio's Garmin display settings.
+    /// What the host doesn't carry: Trio's Garmin display settings.
     struct DisplayOptions: Equatable, Sendable {
         /// `GarminPrimaryAttributeChoice` raw value.
         public var primaryAttributeChoice: String
@@ -186,35 +220,35 @@ public extension GarminWatchState {
     /// Newest reading first, like dev's GarminManager: the first entry carries
     /// every value, the others only their time and glucose. Empty without readings.
     static func states(
-        from snapshot: SmartwatchStatusSnapshot,
+        from host: GarminHostData,
         options: DisplayOptions,
         now: Date = Date()
     ) -> [GarminWatchState] {
-        var readings = snapshot.glucoseHistory
-        if let latest = snapshot.glucose, !readings.contains(where: { $0.date == latest.date }) {
-            readings.append(latest)
-        }
-        readings.sort { $0.date > $1.date }
+        let readings = host.glucoseSamples.sorted { $0.startDate > $1.startDate }
         guard let latest = readings.first else { return [] }
+        let latestGlucose = mgdLValue(latest.quantity)
+        let loop = host.loopState
 
         var first = GarminWatchState()
         // When the loop last ran, not when the reading arrived; 31 minutes ago when
         // unknown, so the watch shows the loop as stale rather than as no data yet.
-        first.date = milliseconds(snapshot.lastLoopCompleted ?? now.addingTimeInterval(-31 * 60))
-        first.glucoseDate = milliseconds(latest.date)
-        first.sgv = mgdL(latest.milligramsPerDeciliter)
+        first.date = milliseconds(loop.lastLoopCompleted ?? now.addingTimeInterval(-31 * 60))
+        first.glucoseDate = milliseconds(latest.startDate)
+        first.sgv = mgdL(latestGlucose)
         first.direction = latest.trend.map(direction) ?? "--"
         first.delta = readings.count > 1
-            ? mgdL(latest.milligramsPerDeciliter - readings[1].milligramsPerDeciliter)
+            ? mgdL(latestGlucose - mgdLValue(readings[1].quantity))
             : 0
-        first.units_hint = snapshot.displayUnit == .millimolesPerLiter ? "mmol" : "mgdl"
-        first.iob = formattedIOB(snapshot.insulinOnBoard ?? 0)
-        first.cob = snapshot.carbsOnBoard
-        first.tbr = snapshot.therapy.flatMap { $0.tempBasalRate ?? $0.scheduledBasalRate }
-        first.isf = snapshot.therapy?.insulinSensitivity.flatMap(mgdL)
-        first.eventualBG = snapshot.therapy?.eventualGlucose.flatMap(mgdL)
-        first.sensRatio = snapshot.therapy?.sensitivityRatio
-        first.targetGlucose = snapshot.therapy?.correctionRange.flatMap { mgdL(($0.lowerBound + $0.upperBound) / 2) }
+        first.units_hint = host.displayUnit == .millimolesPerLiter ? "mmol" : "mgdl"
+        first.iob = formattedIOB(loop.insulinOnBoard?.value ?? 0)
+        first.cob = loop.carbsOnBoard?.quantity.doubleValue(for: .gram)
+        first.tbr = host.tempBasal?.unitsPerHour ?? host.scheduledBasalRate?.doubleValue(for: .internationalUnitsPerHour)
+        first.isf = host.insulinSensitivity.flatMap { mgdL($0.doubleValue(for: .milligramsPerDeciliterPerInternationalUnit)) }
+        first.eventualBG = loop.eventualGlucose.flatMap { mgdL(mgdLValue($0)) }
+        first.sensRatio = loop.sensitivityRatio
+        first.targetGlucose = host.correctionRange.flatMap {
+            mgdL((mgdLValue($0.lowerBound) + mgdLValue($0.upperBound)) / 2)
+        }
         first.displayPrimaryAttributeChoice = options.primaryAttributeChoice
         first.displaySecondaryAttributeChoice = options.secondaryAttributeChoice
         first.glucoseColorScheme = options.glucoseColorScheme
@@ -222,14 +256,14 @@ public extension GarminWatchState {
         let older = readings.dropFirst().prefix(max(options.historyCount - 1, 0))
         return [first] + older.map { reading in
             var state = GarminWatchState()
-            state.date = milliseconds(reading.date)
-            state.sgv = mgdL(reading.milligramsPerDeciliter)
+            state.date = milliseconds(reading.startDate)
+            state.sgv = mgdL(mgdLValue(reading.quantity))
             return state
         }
     }
 
     /// Nightscout direction names, which Garmin's watch apps read.
-    static func direction(_ trend: SmartwatchGlucoseTrend) -> String {
+    static func direction(_ trend: GlucoseTrend) -> String {
         switch trend {
         case .upUpUp: return "DoubleUp"
         case .upUp: return "SingleUp"
@@ -251,6 +285,10 @@ public extension GarminWatchState {
 
     private static func milliseconds(_ date: Date) -> UInt64 {
         UInt64(date.timeIntervalSince1970 * 1000)
+    }
+
+    private static func mgdLValue(_ quantity: LoopQuantity) -> Double {
+        quantity.doubleValue(for: .milligramsPerDeciliter)
     }
 
     private static func mgdL(_ value: Double) -> Int16? {

@@ -15,16 +15,13 @@ import LoopKit
 
 /// Garmin (Connect IQ) as a watch plugin. **Experimental.**
 ///
-/// It only shows data: no remote actions are declared, so nothing goes from the
+/// It only shows data: it asks the host for no actions, so nothing goes from the
 /// watch to the host. It sends the host's glucose, loop status and therapy values
 /// to the chosen Connect IQ watchface or watch app and datafield, built only from
-/// the host's snapshots. Devices and settings are saved in its `rawState`.
+/// what it reads from the host. Devices and settings are saved in its `rawState`.
 public final class GarminSmartwatchManager: NSObject {
     public static let pluginIdentifier = "GarminSmartwatchManager"
     public static let localizedTitle = LocalizedString("Garmin", comment: "Title of the Garmin watch manager")
-
-    /// What Garmin's watch apps show; no alerts, predictions or remote actions.
-    public static var capabilities: SmartwatchCapabilities { [.glucose, .history, .loopStatus, .therapy] }
 
     /// Connect IQ is set up once per launch, though the plugin may be added more than once.
     private static var isConnectIQInitialized = false
@@ -61,16 +58,19 @@ public final class GarminSmartwatchManager: NSObject {
     /// Garmin Connect isn't installed: device selection and sending can't work.
     public private(set) var isConnectMobileMissing = false
 
-    // MARK: - Snapshots
+    // MARK: - Host data
 
-    /// The host's latest snapshot, the only source of the watch state. Written on
-    /// the main actor, read where the watch state is prepared.
-    private let snapshotLock = NSLock()
-    private var storedSnapshot: SmartwatchStatusSnapshot?
-    private var latestSnapshot: SmartwatchStatusSnapshot? {
-        get { snapshotLock.withLock { storedSnapshot } }
-        set { snapshotLock.withLock { storedSnapshot = newValue } }
+    /// What the plugin last read from the host, the only source of the watch state.
+    /// Written when a read finishes, read where the watch state is prepared.
+    private let hostDataLock = NSLock()
+    private var storedHostData: GarminHostData?
+    private var latestHostData: GarminHostData? {
+        get { hostDataLock.withLock { storedHostData } }
+        set { hostDataLock.withLock { storedHostData = newValue } }
     }
+
+    /// The read in progress; a newer change replaces it, as the read gets everything.
+    private var readTask: Task<Void, Never>?
 
     // MARK: - State
 
@@ -129,8 +129,8 @@ public final class GarminSmartwatchManager: NSObject {
     }
 
     /// The host's device log.
-    private func log(type: SmartwatchDeviceLogEntry.EntryType = .connection, _ message: String) {
-        smartwatchManagerDelegate?.smartwatchManager(self, didLogEvent: SmartwatchDeviceLogEntry(type: type, message: message))
+    private func log(type: DeviceLogEntryType = .connection, _ message: String) {
+        smartwatchManagerDelegate?.deviceManager(self, logEventForDeviceIdentifier: nil, type: type, message: message, completion: nil)
     }
 
     // MARK: - Settings Helpers
@@ -157,22 +157,22 @@ public final class GarminSmartwatchManager: NSObject {
 
     // MARK: - Updates
 
-    /// Prepares the watch state from the latest snapshot and sends it to the debounce subject.
+    /// Prepares the watch state from the latest host data and sends it to the debounce subject.
     private func triggerWatchStateUpdate(triggeredBy trigger: String) {
         guard !devices.isEmpty, let data = watchStateData() else { return }
         watchStateSubject.send(data)
     }
 
-    /// The watch state as the watch apps read it; `nil` without a snapshot.
+    /// The watch state as the watch apps read it; `nil` before the host data is read.
     func watchStateData() -> Data? {
-        guard let snapshot = latestSnapshot else { return nil }
+        guard let host = latestHostData else { return nil }
         let options = GarminWatchState.DisplayOptions(
             primaryAttributeChoice: settings.primaryAttributeChoice.rawValue,
             secondaryAttributeChoice: settings.secondaryAttributeChoice.rawValue,
             glucoseColorScheme: settings.glucoseColorScheme.rawValue,
             historyCount: settings.watchface.historyCount
         )
-        return try? JSONEncoder().encode(GarminWatchState.states(from: snapshot, options: options))
+        return try? JSONEncoder().encode(GarminWatchState.states(from: host, options: options))
     }
 
     /// Re-registers when the watch apps change; resends when what they show changes.
@@ -455,25 +455,48 @@ extension GarminSmartwatchManager: IQUIOverrideDelegate, IQDeviceEventDelegate, 
     /// can't work without it), and a warning with a link in the settings.
     public func needsToInstallConnectMobile() {
         log(type: .error, "Garmin Connect app not available; install it from the App Store")
-        smartwatchManagerDelegate?.smartwatchManager(self, issueDeviceAlert: SmartwatchDeviceAlert(
-            identifier: Self.connectMobileMissingAlert,
-            level: .warning,
-            title: LocalizedString("Garmin Connect isn't installed", comment: "Garmin alert title: Garmin Connect missing"),
-            body: LocalizedString("Install Garmin Connect from the App Store to choose Garmin watches and send them glucose.", comment: "Garmin alert body: Garmin Connect missing")
-        ))
+        if let delegate = smartwatchManagerDelegate {
+            let alert = Self.connectMobileMissingAlertContent()
+            Task { await delegate.issueAlert(alert) }
+        }
         DispatchQueue.main.async {
             self.isConnectMobileMissing = true
             self.stateDidChange.send()
         }
     }
 
-    static let connectMobileMissingAlert = SmartwatchAlertIdentifier("connectMobileMissing")
+    static let connectMobileMissingAlertIdentifier = Alert.Identifier(
+        managerIdentifier: pluginIdentifier,
+        alertIdentifier: "connectMobileMissing"
+    )
+
+    /// Garmin Connect missing: a warning, so time-sensitive (a host shows a plugin's alerts at most that).
+    static func connectMobileMissingAlertContent() -> Alert {
+        let content = Alert.Content(
+            title: LocalizedString("Garmin Connect isn't installed", comment: "Garmin alert title: Garmin Connect missing"),
+            body: LocalizedString("Install Garmin Connect from the App Store to choose Garmin watches and send them glucose.", comment: "Garmin alert body: Garmin Connect missing"),
+            acknowledgeActionButtonLabel: LocalizedString("OK", comment: "Garmin alert acknowledge button")
+        )
+        return Alert(
+            identifier: connectMobileMissingAlertIdentifier,
+            foregroundContent: content,
+            backgroundContent: content,
+            trigger: .immediate,
+            interruptionLevel: .timeSensitive
+        )
+    }
+
+    /// Withdraws the alert from the host.
+    private func retractConnectMobileMissingAlert() {
+        guard let delegate = smartwatchManagerDelegate else { return }
+        Task { await delegate.retractAlert(identifier: Self.connectMobileMissingAlertIdentifier) }
+    }
 
     /// Garmin Connect answered, so it's installed: the alert no longer applies.
     private func connectMobileIsAvailable() {
         guard isConnectMobileMissing else { return }
         isConnectMobileMissing = false
-        smartwatchManagerDelegate?.smartwatchManager(self, retractDeviceAlert: Self.connectMobileMissingAlert)
+        retractConnectMobileMissingAlert()
         stateDidChange.send()
     }
 
@@ -573,12 +596,44 @@ extension GarminSmartwatchManager: SmartwatchManager {
     public var inSignalLoss: Bool { false }
     public var isInoperable: Bool { false }
 
-    public func watchDataDidUpdate(_ snapshot: SmartwatchStatusSnapshot) {
-        latestSnapshot = snapshot
-        triggerWatchStateUpdate(triggeredBy: "Snapshot")
+    @MainActor
+    public func hostDataDidChange(_ changes: SmartwatchHostDataChange) {
+        // The watch shows glucose, loop output, basal, sensitivity, target and the display unit.
+        guard !changes.isDisjoint(with: [.glucose, .loop, .presets, .settings]),
+              let delegate = smartwatchManagerDelegate
+        else { return }
+        readTask?.cancel()
+        readTask = Task { [weak self] in
+            guard let self else { return }
+            let host = await self.readHostData(from: delegate)
+            guard !Task.isCancelled else { return }
+            self.latestHostData = host
+            self.triggerWatchStateUpdate(triggeredBy: "Host")
+        }
+    }
+
+    /// Reads what the watch shows; `nil` when the readings can't be read.
+    private func readHostData(from delegate: SmartwatchManagerDelegate) async -> GarminHostData? {
+        let samples: [StoredGlucoseSample]
+        do {
+            samples = try await delegate.smartwatchManager(self, glucoseSamplesSince: Date().addingTimeInterval(-GarminHostData.historyInterval))
+        } catch {
+            log(type: .error, "Garmin could not read glucose: \(error.localizedDescription)")
+            return nil
+        }
+        return GarminHostData(
+            displayUnit: await delegate.smartwatchManagerGlucoseDisplayUnit(self),
+            glucoseSamples: samples,
+            loopState: await delegate.smartwatchManagerLoopState(self),
+            scheduledBasalRate: await delegate.smartwatchManagerScheduledBasalRate(self),
+            tempBasal: await delegate.smartwatchManagerTempBasal(self),
+            insulinSensitivity: await delegate.smartwatchManagerInsulinSensitivity(self),
+            correctionRange: await delegate.smartwatchManagerCorrectionRange(self)
+        )
     }
 
     /// Garmin Connect's device-selection callback.
+    @MainActor
     public func watchHostDidReceiveURL(_ url: URL) -> Bool {
         guard URLComponents(url: url, resolvingAgainstBaseURL: false)?.host == "device-select-resp" else { return false }
         parseDevices(for: url)
@@ -587,8 +642,12 @@ extension GarminSmartwatchManager: SmartwatchManager {
 
     /// Stops sending: the watch apps get nothing more from the host.
     public func delete() async {
-        latestSnapshot = nil
-        smartwatchManagerDelegate?.smartwatchManager(self, retractDeviceAlert: Self.connectMobileMissingAlert)
+        await MainActor.run {
+            readTask?.cancel()
+            readTask = nil
+        }
+        latestHostData = nil
+        await smartwatchManagerDelegate?.retractAlert(identifier: Self.connectMobileMissingAlertIdentifier)
         connectIQ?.unregister(forAllDeviceEvents: self)
         connectIQ?.unregister(forAllAppMessages: self)
         watchApps.removeAll()
@@ -598,9 +657,11 @@ extension GarminSmartwatchManager: SmartwatchManager {
     public func initializationComplete(for _: [Pluggable]) {}
 
     public override var debugDescription: String {
-        "## GarminSmartwatchManager\n* devices: \(devices.count)\n* settings: \(settings)\n* snapshot: \(latestSnapshot == nil ? "none" : "received")"
+        "## GarminSmartwatchManager\n* devices: \(devices.count)\n* settings: \(settings)\n* host data: \(latestHostData == nil ? "none" : "received")"
     }
 
+    /// Nothing to do: the alert only points to the App Store, and it goes away
+    /// when Garmin Connect answers.
     public func acknowledgeAlert(alertIdentifier _: Alert.AlertIdentifier) async throws {}
 
     public func getSoundBaseURL() -> URL? { nil }

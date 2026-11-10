@@ -4,7 +4,7 @@
 
 Garmin (Connect IQ) as a LoopKit `SmartwatchManager` plugin, for hosts such as [Trio](https://github.com/nightscout/Trio) and Loop.
 
-It is derived from Trio's `GarminManager`, `GarminWatchState` and `GarminWatchSettings` (Trio contributors, MIT). The Connect IQ code is Trio's. What changed is where the data comes from: the plugin builds the Garmin watch state only from the host's `SmartwatchStatusSnapshot`, and keeps its devices and settings in its own `rawState`.
+It is derived from Trio's `GarminManager`, `GarminWatchState` and `GarminWatchSettings` (Trio contributors, MIT). The Connect IQ code is Trio's. What changed is where the data comes from: the plugin builds the Garmin watch state only from what it reads from its host (`SmartwatchManagerDelegate`) after `hostDataDidChange`, and keeps its devices and settings in its own `rawState`.
 
 ## What it does
 
