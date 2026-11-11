@@ -72,6 +72,10 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
     /// Not a watchface but a sideloaded Connect IQ watch app with a Glance
     /// (mountrcg/GarminAppTrioPerso): a glucose gauge, a trend graph and IOB.
     case trioApp
+    /// Not a watchface but the sideloaded WatchAID watch app
+    /// (lac-gh-org/GarminSmartwatchApp, working name): one app for Trio and Loop,
+    /// with a graph and a Glance.
+    case watchAID
 
     public var displayName: String {
         switch self {
@@ -79,16 +83,18 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         case .swissalpine: return LocalizedString("Swissalpine", comment: "Garmin watchface: SwissAlpine")
         case .complication: return LocalizedString("Complication", comment: "Garmin watch app: complications")
         case .trioApp: return LocalizedString("Trio App", comment: "Garmin watch app: Trio app with glance")
+        case .watchAID: return LocalizedString("WatchAID", comment: "Garmin watch app: WatchAID, for Trio and Loop")
         }
     }
 
-    /// The Connect IQ store apps (live builds); the Trio app is sideloaded.
+    /// The Connect IQ store apps (live builds); the Trio app and WatchAID are sideloaded.
     public var watchfaceUUID: UUID? {
         switch self {
         case .trio: return UUID(uuidString: "7a121867-140e-41ba-9982-2e82e2aa6579")
         case .swissalpine: return UUID(uuidString: "4cea4efd-4aaf-4db4-8891-ef36dde14303")
         case .complication: return UUID(uuidString: "0986fd19-604b-4bcb-a931-6f8621738682")
         case .trioApp: return UUID(uuidString: "087bee51-ad92-4296-b03b-18f101b5f751")
+        case .watchAID: return UUID(uuidString: "fbab5ed8-4aa6-4f53-8fb5-732660aa2e34")
         }
     }
 
@@ -101,9 +107,9 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         switch self {
         case .trio: return 0
         case .swissalpine, .complication: return 2 * 60 * 60
-        // Its graph shows all the host has; 4 h (the 48 readings it had before) is
-        // more than the host's 3 h, so it gets every reading.
-        case .trioApp: return 4 * 60 * 60
+        // Their graphs show all the host has; 4 h (the Trio app's 48 readings
+        // before) is more than the host's 3 h, so they get every reading.
+        case .trioApp, .watchAID: return 4 * 60 * 60
         }
     }
 
@@ -112,7 +118,7 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
     /// far apart, as with a 5-minute CGM.
     public var historySpacing: TimeInterval {
         switch self {
-        case .trio, .swissalpine, .complication, .trioApp: return 5 * 60
+        case .trio, .swissalpine, .complication, .trioApp, .watchAID: return 5 * 60
         }
     }
 }

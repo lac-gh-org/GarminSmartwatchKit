@@ -195,6 +195,19 @@ import Testing
         #expect(states[36].date == milliseconds(minutesAgo: 180))
     }
 
+    @Test("WatchAID gets every reading in the host's 3 h, and only 5 minutes apart from a 1-minute CGM") func watchAIDHistory() {
+        var watchAID = options
+        watchAID.historySpan = GarminWatchface.watchAID.historySpan
+        watchAID.historySpacing = GarminWatchface.watchAID.historySpacing
+
+        let fiveMinute = GarminWatchState.states(from: hostData(history: series(every: 5, for: 180)), options: watchAID, now: now)
+        #expect(fiveMinute.count == 37, "all the host's readings")
+        #expect(fiveMinute[36].date == milliseconds(minutesAgo: 180))
+
+        let oneMinute = GarminWatchState.states(from: hostData(history: series(every: 1, for: 180)), options: watchAID, now: now)
+        #expect(oneMinute.count == 37, "every 5th reading, still back to 3 h")
+    }
+
     @Test("Trio's watchface gets only the newest reading") func noHistory() {
         let history = (0 ..< 12).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
         let states = GarminWatchState.states(from: hostData(history: history), options: options, now: now)
