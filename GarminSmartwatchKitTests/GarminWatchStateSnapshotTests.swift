@@ -208,6 +208,23 @@ import Testing
         #expect(oneMinute.count == 37, "every 5th reading, still back to 3 h")
     }
 
+    @Test("The host's name goes in the first entry only, and is left out when unknown") func hostName() throws {
+        var named = withHistory
+        named.hostName = "Trio"
+        let history = series(every: 5, for: 10)
+
+        let states = GarminWatchState.states(from: hostData(history: history), options: named, now: now)
+        #expect(states.first?.host == "Trio")
+        #expect(states.dropFirst().allSatisfy { $0.host == nil }, "older entries carry only time and glucose")
+
+        let json = try #require(String(data: JSONEncoder().encode(states), encoding: .utf8))
+        #expect(json.contains(#""host":"Trio""#))
+
+        let unnamed = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
+        let unnamedJSON = try #require(String(data: JSONEncoder().encode(unnamed), encoding: .utf8))
+        #expect(!unnamedJSON.contains("host"), "no key when the host has no name")
+    }
+
     @Test("Trio's watchface gets only the newest reading") func noHistory() {
         let history = (0 ..< 12).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
         let states = GarminWatchState.states(from: hostData(history: history), options: options, now: now)

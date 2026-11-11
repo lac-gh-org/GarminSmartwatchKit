@@ -128,6 +128,14 @@ public final class GarminSmartwatchManager: NSObject {
         return types?.lazy.compactMap { ($0["CFBundleURLSchemes"] as? [String])?.first }.first
     }
 
+    /// The host app's name as its users see it ("Trio", "Loop"), sent for the watch
+    /// to show, as LupedSmartwatchKit does; `nil` if the app declares none.
+    static var hostName: String? {
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+        return name?.isEmpty == false ? name : nil
+    }
+
     /// The host's device log.
     private func log(type: DeviceLogEntryType = .connection, _ message: String) {
         smartwatchManagerDelegate?.deviceManager(self, logEventForDeviceIdentifier: nil, type: type, message: message, completion: nil)
@@ -171,7 +179,8 @@ public final class GarminSmartwatchManager: NSObject {
             secondaryAttributeChoice: settings.secondaryAttributeChoice.rawValue,
             glucoseColorScheme: settings.glucoseColorScheme.rawValue,
             historySpan: settings.watchface.historySpan,
-            historySpacing: settings.watchface.historySpacing
+            historySpacing: settings.watchface.historySpacing,
+            hostName: Self.hostName
         )
         return try? JSONEncoder().encode(GarminWatchState.states(from: host, options: options))
     }

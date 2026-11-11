@@ -72,6 +72,11 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
     /// Scheduled Profile target currently active
     var targetGlucose: Int16?
 
+    /// The host app's name ("Trio", "Loop"), for the watch to show; only in the
+    /// first entry. For display only: a watch app takes what it can do from the
+    /// values it gets, never from this name.
+    var host: String?
+
     public static func == (lhs: GarminWatchState, rhs: GarminWatchState) -> Bool {
         lhs.date == rhs.date &&
             lhs.glucoseDate == rhs.glucoseDate &&
@@ -89,7 +94,8 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
             lhs.displayPrimaryAttributeChoice == rhs.displayPrimaryAttributeChoice &&
             lhs.displaySecondaryAttributeChoice == rhs.displaySecondaryAttributeChoice &&
             lhs.glucoseColorScheme == rhs.glucoseColorScheme &&
-            lhs.targetGlucose == rhs.targetGlucose
+            lhs.targetGlucose == rhs.targetGlucose &&
+            lhs.host == rhs.host
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -110,6 +116,7 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         hasher.combine(displaySecondaryAttributeChoice)
         hasher.combine(glucoseColorScheme)
         hasher.combine(targetGlucose)
+        hasher.combine(host)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -130,6 +137,7 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         case displaySecondaryAttributeChoice
         case glucoseColorScheme
         case targetGlucose
+        case host
     }
 
     /// Custom encoding that excludes nil values from the JSON output
@@ -154,6 +162,7 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         try container.encodeIfPresent(displaySecondaryAttributeChoice, forKey: .displaySecondaryAttributeChoice)
         try container.encodeIfPresent(glucoseColorScheme, forKey: .glucoseColorScheme)
         try container.encodeIfPresent(targetGlucose, forKey: .targetGlucose)
+        try container.encodeIfPresent(host, forKey: .host)
     }
 
     private static func twoPlaces(_ value: Double) -> Double {
@@ -215,19 +224,23 @@ public extension GarminWatchState {
         public var historySpan: TimeInterval
         /// The least time between two readings sent (`GarminWatchface.historySpacing`).
         public var historySpacing: TimeInterval
+        /// The host app's name for the watch to show (`GarminSmartwatchManager.hostName`).
+        public var hostName: String?
 
         public init(
             primaryAttributeChoice: String,
             secondaryAttributeChoice: String,
             glucoseColorScheme: String,
             historySpan: TimeInterval,
-            historySpacing: TimeInterval
+            historySpacing: TimeInterval,
+            hostName: String? = nil
         ) {
             self.primaryAttributeChoice = primaryAttributeChoice
             self.secondaryAttributeChoice = secondaryAttributeChoice
             self.glucoseColorScheme = glucoseColorScheme
             self.historySpan = historySpan
             self.historySpacing = historySpacing
+            self.hostName = hostName
         }
     }
 
@@ -270,6 +283,7 @@ public extension GarminWatchState {
         first.displayPrimaryAttributeChoice = options.primaryAttributeChoice
         first.displaySecondaryAttributeChoice = options.secondaryAttributeChoice
         first.glucoseColorScheme = options.glucoseColorScheme
+        first.host = options.hostName
 
         return [first] + history(after: readings, options: options).map { reading in
             var state = GarminWatchState()
