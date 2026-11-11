@@ -11,8 +11,23 @@ import Testing
         primaryAttributeChoice: "cob",
         secondaryAttributeChoice: "tbr",
         glucoseColorScheme: "static",
-        historyCount: GarminWatchface.trio.historyCount
+        historySpan: GarminWatchface.trio.historySpan,
+        historySpacing: GarminWatchface.trio.historySpacing
     )
+
+    /// What SwissAlpine and the complication app get: 2 h, 5 minutes apart.
+    private var withHistory: GarminWatchState.DisplayOptions {
+        var options = options
+        options.historySpan = GarminWatchface.swissalpine.historySpan
+        options.historySpacing = GarminWatchface.swissalpine.historySpacing
+        return options
+    }
+
+    /// Readings every `interval` minutes from `minutes` ago up to now, glucose 100
+    /// plus the minutes ago, so a reading's glucose tells its age.
+    private func series(every interval: Double, for minutes: Double) -> [StoredGlucoseSample] {
+        stride(from: minutes, through: 0, by: -interval).map { reading(minutesAgo: $0, 100 + $0) }
+    }
 
     private func reading(minutesAgo: Double, _ mgdL: Double, _ trend: GlucoseTrend? = .flat) -> StoredGlucoseSample {
         StoredGlucoseSample(
@@ -115,29 +130,68 @@ import Testing
         #expect(states.first?.delta == 0, "one reading: no delta")
     }
 
-    @Test("SwissAlpine and the complication app get up to 24 readings, newest first") func history() {
-        var withHistory = options
-        withHistory.historyCount = GarminWatchface.swissalpine.historyCount
-        let history = (0 ..< 36).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
-        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
+    @Test("SwissAlpine and the complication app get 2 h of a 5-minute CGM: 24 readings, newest first") func history() {
+        let states = GarminWatchState.states(from: hostData(history: series(every: 5, for: 175)), options: withHistory, now: now)
 
-        #expect(states.count == 24)
+        #expect(states.count == 24, "as many as the 24-reading count sent before")
         #expect(states[0].sgv == 100)
-        #expect(states[1].sgv == 101)
+        #expect(states[1].sgv == 105)
         #expect(states[1].date == milliseconds(minutesAgo: 5), "older entries carry the reading's time")
         #expect(states[1].iob == nil, "older entries carry only time and glucose")
-        #expect(states[23].sgv == 123)
+        #expect(states[23].date == milliseconds(minutesAgo: 115), "less than 2 h before the newest")
     }
 
-    @Test("The Trio app gets every reading in the host's 3 h, up to 48") func trioAppHistory() {
-        var withHistory = options
-        withHistory.historyCount = GarminWatchface.trioApp.historyCount
-        let history = (0 ..< 37).reversed().map { reading(minutesAgo: Double($0) * 5, 100 + Double($0)) }
+    @Test("A 1-minute CGM sends every 5th reading over the same 2 h; the delta stays the 1-minute one") func oneMinuteCGM() {
+        let states = GarminWatchState.states(from: hostData(history: series(every: 1, for: 180)), options: withHistory, now: now)
+
+        #expect(states.count == 24, "as many as a 5-minute CGM")
+        #expect(states.dropFirst().map(\.date) == stride(from: 5.0, through: 115, by: 5).map { milliseconds(minutesAgo: $0) as UInt64? })
+        #expect(states[0].delta == -1, "from the reading a minute before, not the next one sent")
+    }
+
+    @Test("A 2-minute CGM sends readings at least 5 minutes apart") func twoMinuteCGM() {
+        let states = GarminWatchState.states(from: hostData(history: series(every: 2, for: 180)), options: withHistory, now: now)
+
+        #expect(states.dropFirst().map(\.date) == stride(from: 6.0, through: 114, by: 6).map { milliseconds(minutesAgo: $0) as UInt64? })
+    }
+
+    @Test("A 5-minute CGM a few seconds early or late keeps every reading") func jitter() {
+        // Gaps alternate between 4:58 and 5:02.
+        let history = (0 ..< 30).map { i in
+            reading(minutesAgo: Double(i) * 5 - (i.isMultiple(of: 2) ? 0 : 2.0 / 60), 100 + Double(i))
+        }
         let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
 
-        #expect(states.count == 37, "fewer readings than 48: all of them")
+        #expect(states.map(\.sgv) == (0 ..< 24).map { Int16(100 + $0) as Int16? })
+    }
+
+    @Test("A gap stays a gap: nothing is filled in") func gap() {
+        let history = [0.0, 5, 10, 50, 55].map { reading(minutesAgo: $0, 100 + $0) }
+        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
+
+        // The first entry's date is the loop's, so compare the older ones.
+        #expect(states.dropFirst().map(\.date) == [5.0, 10, 50, 55].map { milliseconds(minutesAgo: $0) as UInt64? })
+    }
+
+    @Test("A span beyond the host's 3 h gets every reading the host sent") func historyBeyondInterval() {
+        var longer = withHistory
+        longer.historySpan = 4 * 60 * 60
+        let states = GarminWatchState.states(from: hostData(history: series(every: 5, for: 180)), options: longer, now: now)
+
+        #expect(states.count == 37)
+        #expect(states[36].sgv == 280)
+        #expect(states[36].date == milliseconds(minutesAgo: 180))
+    }
+
+    @Test("The Trio app gets every reading in the host's 3 h") func trioAppHistory() {
+        var trioApp = options
+        trioApp.historySpan = GarminWatchface.trioApp.historySpan
+        trioApp.historySpacing = GarminWatchface.trioApp.historySpacing
+        let states = GarminWatchState.states(from: hostData(history: series(every: 5, for: 180)), options: trioApp, now: now)
+
+        #expect(states.count == 37, "all the host's readings")
         #expect(states[0].sgv == 100)
-        #expect(states[36].sgv == 136)
+        #expect(states[36].sgv == 280)
         #expect(states[36].date == milliseconds(minutesAgo: 180))
     }
 

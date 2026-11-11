@@ -211,16 +211,29 @@ public extension GarminWatchState {
         public var secondaryAttributeChoice: String
         /// "dynamic" or "static", the wire format the watchface reads.
         public var glucoseColorScheme: String
-        /// The most readings to send, newest included (`GarminWatchface.historyCount`).
-        public var historyCount: Int
+        /// How far back from the newest reading to send (`GarminWatchface.historySpan`).
+        public var historySpan: TimeInterval
+        /// The least time between two readings sent (`GarminWatchface.historySpacing`).
+        public var historySpacing: TimeInterval
 
-        public init(primaryAttributeChoice: String, secondaryAttributeChoice: String, glucoseColorScheme: String, historyCount: Int) {
+        public init(
+            primaryAttributeChoice: String,
+            secondaryAttributeChoice: String,
+            glucoseColorScheme: String,
+            historySpan: TimeInterval,
+            historySpacing: TimeInterval
+        ) {
             self.primaryAttributeChoice = primaryAttributeChoice
             self.secondaryAttributeChoice = secondaryAttributeChoice
             self.glucoseColorScheme = glucoseColorScheme
-            self.historyCount = historyCount
+            self.historySpan = historySpan
+            self.historySpacing = historySpacing
         }
     }
+
+    /// How much closer than `historySpacing` two readings may be and both still be
+    /// sent: a 5-minute CGM's readings arrive a few seconds early or late.
+    static let historySpacingTolerance: TimeInterval = 30
 
     /// Newest reading first, like dev's GarminManager: the first entry carries
     /// every value, the others only their time and glucose. Empty without readings.
@@ -258,13 +271,29 @@ public extension GarminWatchState {
         first.displaySecondaryAttributeChoice = options.secondaryAttributeChoice
         first.glucoseColorScheme = options.glucoseColorScheme
 
-        let older = readings.dropFirst().prefix(max(options.historyCount - 1, 0))
-        return [first] + older.map { reading in
+        return [first] + history(after: readings, options: options).map { reading in
             var state = GarminWatchState()
             state.date = milliseconds(reading.startDate)
             state.sgv = mgdL(mgdLValue(reading.quantity))
             return state
         }
+    }
+
+    /// The readings after the newest to send, newest first: those less than
+    /// `historySpan` older than the newest reading, each at least `historySpacing`
+    /// (less the tolerance) older than the one sent before it. The delta above still
+    /// comes from the reading right after the newest, whether it's sent or not.
+    static func history(after readings: [StoredGlucoseSample], options: DisplayOptions) -> [StoredGlucoseSample] {
+        guard let latest = readings.first else { return [] }
+        var sent: [StoredGlucoseSample] = []
+        var lastSent = latest.startDate
+        for reading in readings.dropFirst() {
+            guard latest.startDate.timeIntervalSince(reading.startDate) < options.historySpan else { break }
+            guard lastSent.timeIntervalSince(reading.startDate) >= options.historySpacing - historySpacingTolerance else { continue }
+            sent.append(reading)
+            lastSent = reading.startDate
+        }
+        return sent
     }
 
     /// Nightscout direction names, which Garmin's watch apps read.

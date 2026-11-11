@@ -8,7 +8,7 @@ It is derived from Trio's `GarminManager`, `GarminWatchState` and `GarminWatchSe
 
 ## What it does
 
-- Sends glucose (with up to 24 readings of history for SwissAlpine and the complication app), trend, delta, IOB, COB, last loop, temp or scheduled basal, ISF, eventual glucose, sensitivity ratio and target to:
+- Sends glucose (with 2 h of history for SwissAlpine and the complication app, readings at least 5 minutes apart whatever the CGM), trend, delta, IOB, COB, last loop, temp or scheduled basal, ISF, eventual glucose, sensitivity ratio and target to:
   - a watchface or watch app: Trio, SwissAlpine, or Complication;
   - a datafield: Trio or SwissAlpine.
 - **Display only:** it declares `glucose`, `history`, `loopStatus` and `therapy`, and no remote actions. Nothing goes from the watch to the host.

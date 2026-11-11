@@ -170,7 +170,8 @@ public final class GarminSmartwatchManager: NSObject {
             primaryAttributeChoice: settings.primaryAttributeChoice.rawValue,
             secondaryAttributeChoice: settings.secondaryAttributeChoice.rawValue,
             glucoseColorScheme: settings.glucoseColorScheme.rawValue,
-            historyCount: settings.watchface.historyCount
+            historySpan: settings.watchface.historySpan,
+            historySpacing: settings.watchface.historySpacing
         )
         return try? JSONEncoder().encode(GarminWatchState.states(from: host, options: options))
     }

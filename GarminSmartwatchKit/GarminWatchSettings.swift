@@ -92,14 +92,27 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         }
     }
 
-    /// The most readings the watch app shows, newest included. The host's snapshot
-    /// holds only `SmartwatchStatusSnapshot.historyInterval` (3 h) of readings, so
-    /// the Trio app's 48 (4 h) get about 36 at most.
-    public var historyCount: Int {
+    /// How far back the readings the watch app gets reach, measured from the newest
+    /// reading; 0 sends the newest reading only. Time rather than a count, so it
+    /// means the same with any CGM. The plugin reads only
+    /// `GarminHostData.historyInterval` (3 h) from the host, so a longer span gets
+    /// no more than that.
+    public var historySpan: TimeInterval {
         switch self {
-        case .trio: return 1
-        case .swissalpine, .complication: return 24
-        case .trioApp: return 48
+        case .trio: return 0
+        case .swissalpine, .complication: return 2 * 60 * 60
+        // Its graph shows all the host has; 4 h (the 48 readings it had before) is
+        // more than the host's 3 h, so it gets every reading.
+        case .trioApp: return 4 * 60 * 60
+        }
+    }
+
+    /// The least time between two readings the watch app gets. With 5 minutes a
+    /// 1-minute CGM sends every 5th reading, so these apps get as many readings, as
+    /// far apart, as with a 5-minute CGM.
+    public var historySpacing: TimeInterval {
+        switch self {
+        case .trio, .swissalpine, .complication, .trioApp: return 5 * 60
         }
     }
 }
