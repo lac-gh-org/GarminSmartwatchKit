@@ -61,6 +61,17 @@ import Testing
         )
     }
 
+    @Test("The display limits are read but not sent to the watch yet") func displayLimitsNotSent() {
+        let history = [reading(minutesAgo: 5, 104), reading(minutesAgo: 0, 110, .up)]
+        var withLimits = hostData(history: history)
+        withLimits.glucoseDisplayLimits = SmartwatchGlucoseDisplayLimits(low: mgdL(70), high: mgdL(180))
+        #expect(withLimits.glucoseDisplayLimits != nil)
+        #expect(
+            GarminWatchState.states(from: withLimits, options: options, now: now)
+                == GarminWatchState.states(from: hostData(history: history), options: options, now: now)
+        )
+    }
+
     @Test("The first entry carries every value") func firstEntry() {
         let history = [reading(minutesAgo: 10, 100), reading(minutesAgo: 5, 104), reading(minutesAgo: 0, 110, .up)]
         let states = GarminWatchState.states(from: hostData(
