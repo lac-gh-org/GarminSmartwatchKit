@@ -1,0 +1,95 @@
+# Runs GarminSmartwatchKitTests for any branch of this fork, on demand.
+#
+# The kit can't build on its own: its project takes LoopKit from the
+# surrounding workspace. So this checks out TrioGarminTest with its submodules
+# (Trio's workspace, LoopKit and the rest), moves the GarminSmartwatchKit
+# submodule to the commit under test, and runs the kit's tests there on an
+# iPhone simulator, unsigned.
+#
+# Run it from the Actions tab: "Kit tests" > "Run workflow".
+
+name: Kit tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      kit_ref:
+        description: GarminSmartwatchKit branch, tag or commit in this fork to test
+        type: string
+        required: true
+        default: status-reply-history-count
+      trio_ref:
+        description: TrioGarminTest branch that provides the workspace and LoopKit
+        type: string
+        required: true
+        default: watch-plugins-test-trio-app
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: GarminSmartwatchKitTests
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      KIT_REF: ${{ inputs.kit_ref }}
+      KIT_REPO: ${{ github.server_url }}/${{ github.repository }}.git
+    steps:
+      # Same Xcode as Trio's own build workflow (build_trio.yml).
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app/Contents/Developer
+
+      - name: Check out TrioGarminTest and its submodules
+        uses: actions/checkout@v5
+        with:
+          repository: lac-gh-org/TrioGarminTest
+          ref: ${{ inputs.trio_ref }}
+          submodules: recursive
+
+      - name: Move GarminSmartwatchKit to the commit under test
+        working-directory: GarminSmartwatchKit
+        run: |
+          git fetch --no-tags "$KIT_REPO" "$KIT_REF"
+          git checkout --detach FETCH_HEAD
+          {
+            echo "### Kit tests"
+            echo "- GarminSmartwatchKit: \`$KIT_REF\` at $(git log -1 --format='%h %s')"
+            echo "- TrioGarminTest: \`${{ inputs.trio_ref }}\`, LoopKit at $(git -C ../LoopKit log -1 --format='%h')"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pick an iPhone simulator
+        run: |
+          # The newest iOS runtime's first iPhone; simulator names change with Xcode.
+          SIM_ID=$(xcrun simctl list devices available -j | jq -r '
+            [.devices | to_entries | sort_by(.key) | reverse[]
+             | select(.key | contains("iOS"))
+             | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+            echo "No iPhone simulator found" >&2
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator $SIM_ID"
+          echo "SIM_ID=$SIM_ID" >> "$GITHUB_ENV"
+
+      - name: Run the tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -workspace Trio.xcworkspace \
+            -scheme GarminSmartwatchKit \
+            -destination "id=$SIM_ID" \
+            -resultBundlePath TestResults.xcresult \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Keep the test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          if-no-files-found: ignore
