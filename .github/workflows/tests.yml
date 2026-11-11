@@ -23,6 +23,15 @@ on:
         type: string
         required: true
         default: watch-plugins-test-trio-app
+      runner:
+        description: macOS runner image; try another when one's queue is stuck (each needs an Xcode 26)
+        type: choice
+        required: true
+        default: macos-26
+        options:
+          - macos-26
+          - macos-15
+          - macos-15-intel
 
 permissions:
   contents: read
@@ -30,7 +39,7 @@ permissions:
 jobs:
   test:
     name: GarminSmartwatchKitTests
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 60
     env:
       KIT_REF: ${{ inputs.kit_ref }}
@@ -51,6 +60,7 @@ jobs:
           xcodebuild -version
           {
             echo "### Kit tests"
+            echo "- Runner: \`${{ inputs.runner }}\`, $(sw_vers -productName) $(sw_vers -productVersion) on $(uname -m)"
             echo "- Xcode: $(xcodebuild -version | head -n 1) ($(basename "$XCODE"))"
           } >> "$GITHUB_STEP_SUMMARY"
 
