@@ -36,9 +36,23 @@ jobs:
       KIT_REF: ${{ inputs.kit_ref }}
       KIT_REPO: ${{ github.server_url }}/${{ github.repository }}.git
     steps:
-      # Same Xcode as Trio's own build workflow (build_trio.yml).
+      # The newest Xcode 26 the runner has. Trio's own build pins 26.5
+      # (build_trio.yml); taking the newest instead keeps this running when an
+      # image has a different 26.x.
       - name: Select Xcode
-        run: sudo xcode-select --switch /Applications/Xcode_26.5.app/Contents/Developer
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$XCODE" ]; then
+            echo "No Xcode 26 on this runner:" >&2
+            ls -d /Applications/Xcode*.app >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$XCODE/Contents/Developer"
+          xcodebuild -version
+          {
+            echo "### Kit tests"
+            echo "- Xcode: $(xcodebuild -version | head -n 1) ($(basename "$XCODE"))"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check out TrioGarminTest and its submodules
         uses: actions/checkout@v5
@@ -53,7 +67,6 @@ jobs:
           git fetch --no-tags "$KIT_REPO" "$KIT_REF"
           git checkout --detach FETCH_HEAD
           {
-            echo "### Kit tests"
             echo "- GarminSmartwatchKit: \`$KIT_REF\` at $(git log -1 --format='%h %s')"
             echo "- TrioGarminTest: \`${{ inputs.trio_ref }}\`, LoopKit at $(git -C ../LoopKit log -1 --format='%h')"
           } >> "$GITHUB_STEP_SUMMARY"
