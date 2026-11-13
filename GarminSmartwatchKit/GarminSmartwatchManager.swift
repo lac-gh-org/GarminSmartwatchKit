@@ -72,6 +72,10 @@ public final class GarminSmartwatchManager: NSObject {
     /// The read in progress; a newer change replaces it, as the read gets everything.
     private var readTask: Task<Void, Never>?
 
+    /// The forecast lines last written to the device log; the loop state is read
+    /// with every reading, the forecast is logged only when it changes.
+    private var loggedForecast: [String] = []
+
     // MARK: - State
 
     /// The watch apps and display choices; changing them re-registers or resends as needed.
@@ -618,8 +622,18 @@ extension GarminSmartwatchManager: SmartwatchManager {
             let host = await self.readHostData(from: delegate)
             guard !Task.isCancelled else { return }
             self.latestHostData = host
+            self.logForecast(host?.loopState.predictedGlucose ?? [])
             self.triggerWatchStateUpdate(triggeredBy: "Host")
         }
+    }
+
+    /// Device log only, to check the cone sent against the host's forecasts.
+    @MainActor
+    private func logForecast(_ curves: [[PredictedGlucoseValue]]) {
+        let lines = GarminWatchState.forecastLogLines(curves)
+        guard lines != loggedForecast else { return }
+        loggedForecast = lines
+        lines.forEach { log($0) }
     }
 
     /// Reads what the watch shows; `nil` when the readings can't be read.
