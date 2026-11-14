@@ -63,8 +63,7 @@ targets:
       - package: ConnectIQ
         embed: false
   GarminSmartwatchPlugin:
-    # A framework, like LupedSmartwatchPlugin
-    type: framework
+    type: bundle
     platform: iOS
     sources: [GarminSmartwatchPlugin]
     settings:
@@ -72,6 +71,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.loopkit.GarminSmartwatchPlugin
         INFOPLIST_FILE: GarminSmartwatchPlugin/Info.plist
         WRAPPER_EXTENSION: loopplugin
+        # A dynamic library, like ShareClientPlugin and LibreTransmitterPlugin: Loop
+        # copies plugins into the app's Frameworks, where App Store Connect rejects a
+        # bundle binary (ITMS 90124). Still a bundle target, so Xcode keeps embedding
+        # the ConnectIQ binary framework by itself.
+        MACH_O_TYPE: mh_dylib
         # The host signs the plugin and its frameworks when it copies them in
         # (Loop's copy-plugins.sh), so the bundle builds without a team.
         CODE_SIGNING_ALLOWED: NO
@@ -83,10 +87,7 @@ targets:
         embed: true
       - target: GarminSmartwatchKitUI
         embed: true
-      # Embedded by hand: Xcode embeds package frameworks in a bundle by itself,
-      # not in a framework, and the host gets ConnectIQ only through the plugin.
       - package: ConnectIQ
-        embed: true
       - framework: LoopKit.framework
         implicit: true
         embed: false
