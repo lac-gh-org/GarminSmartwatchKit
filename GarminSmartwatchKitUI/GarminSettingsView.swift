@@ -176,9 +176,6 @@ struct GarminSettingsView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
                 Text(LocalizedString("Turn off Send to Watchface to use only a datafield. Complication is a watch app that puts the values in any watchface's complications.", comment: "Garmin settings: watch apps footer"))
-                if model.settings.watchface == .trioApp {
-                    Text(LocalizedString("Trio App isn't in the Connect IQ store: sideload it onto your watch.", comment: "Garmin settings: Trio app sideload note"))
-                }
                 if model.settings.watchface == .watchAID {
                     Text(LocalizedString("WatchAID isn't in the Connect IQ store: sideload it onto your watch.", comment: "Garmin settings: WatchAID sideload note"))
                 }

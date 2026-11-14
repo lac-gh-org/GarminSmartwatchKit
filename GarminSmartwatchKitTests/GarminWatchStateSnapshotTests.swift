@@ -235,18 +235,6 @@ import Testing
         #expect(states[36].date == milliseconds(minutesAgo: 180))
     }
 
-    @Test("The Trio app gets every reading in the host's 3 h") func trioAppHistory() {
-        var trioApp = options
-        trioApp.historySpan = GarminWatchface.trioApp.historySpan
-        trioApp.historySpacing = GarminWatchface.trioApp.historySpacing
-        let states = GarminWatchState.states(from: hostData(history: series(every: 5, for: 180)), options: trioApp, now: now)
-
-        #expect(states.count == 37, "all the host's readings")
-        #expect(states[0].sgv == 100)
-        #expect(states[36].sgv == 280)
-        #expect(states[36].date == milliseconds(minutesAgo: 180))
-    }
-
     @Test("WatchAID gets every reading in the host's 3 h, and only 5 minutes apart from a 1-minute CGM") func watchAIDHistory() {
         var watchAID = options
         watchAID.historySpan = GarminWatchface.watchAID.historySpan
