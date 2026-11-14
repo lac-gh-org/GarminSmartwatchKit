@@ -69,7 +69,7 @@ import Testing
             ),
             scheduledBasalRate: scheduledBasalRate.map { LoopQuantity(unit: .internationalUnitsPerHour, doubleValue: $0) },
             tempBasal: tempBasalRate.map {
-                DoseEntry(type: .tempBasal, startDate: now, endDate: now.addingTimeInterval(1800), value: $0, unit: .unitsPerHour, decisionId: nil)
+                DoseEntry(type: .tempBasal, startDate: now, endDate: now.addingTimeInterval(1800), value: $0, unit: .unitsPerHour)
             },
             insulinSensitivity: insulinSensitivity,
             correctionRange: correctionRange
