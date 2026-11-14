@@ -63,7 +63,8 @@ targets:
       - package: ConnectIQ
         embed: false
   GarminSmartwatchPlugin:
-    type: bundle
+    # A framework, like LupedSmartwatchPlugin
+    type: framework
     platform: iOS
     sources: [GarminSmartwatchPlugin]
     settings:
@@ -82,7 +83,10 @@ targets:
         embed: true
       - target: GarminSmartwatchKitUI
         embed: true
+      # Embedded by hand: Xcode embeds package frameworks in a bundle by itself,
+      # not in a framework, and the host gets ConnectIQ only through the plugin.
       - package: ConnectIQ
+        embed: true
       - framework: LoopKit.framework
         implicit: true
         embed: false
