@@ -44,7 +44,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C45E36D2066C203987AF454C"
-               BuildableName = "GarminSmartwatchPlugin.loopplugin"
+               BuildableName = "GarminSmartwatchPlugin.bundle"
                BlueprintName = "GarminSmartwatchPlugin"
                ReferencedContainer = "container:GarminSmartwatchKit.xcodeproj">
             </BuildableReference>
