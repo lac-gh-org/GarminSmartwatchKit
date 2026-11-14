@@ -186,6 +186,13 @@ struct GarminSettingsView: View {
         }
     }
 
+    /// Only Trio's look on the watch uses the glucose colour setting; for a Loop host
+    /// the watch draws Loop's own colours. Nothing exposes the host's look,
+    /// so the name decides; unknown or renamed hosts keep the picker.
+    private var isLoopHost: Bool {
+        GarminSmartwatchManager.hostName?.range(of: "loop", options: .caseInsensitive) != nil
+    }
+
     private var displaySection: some View {
         Section {
             Picker(LocalizedString("Primary Value", comment: "Garmin settings: primary attribute"), selection: $model.settings.primaryAttributeChoice) {
@@ -194,8 +201,10 @@ struct GarminSettingsView: View {
             Picker(LocalizedString("Secondary Value", comment: "Garmin settings: secondary attribute"), selection: $model.settings.secondaryAttributeChoice) {
                 ForEach(GarminSecondaryAttributeChoice.allCases) { Text($0.displayName).tag($0) }
             }
-            Picker(LocalizedString("Glucose Colors", comment: "Garmin settings: glucose colour scheme"), selection: $model.settings.glucoseColorScheme) {
-                ForEach(GarminGlucoseColorScheme.allCases) { Text($0.displayName).tag($0) }
+            if !isLoopHost {
+                Picker(LocalizedString("Glucose Colors", comment: "Garmin settings: glucose colour scheme"), selection: $model.settings.glucoseColorScheme) {
+                    ForEach(GarminGlucoseColorScheme.allCases) { Text($0.displayName).tag($0) }
+                }
             }
         } header: {
             Text(LocalizedString("Display", comment: "Garmin settings: display section"))

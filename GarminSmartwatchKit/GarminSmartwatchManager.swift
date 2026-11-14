@@ -134,7 +134,7 @@ public final class GarminSmartwatchManager: NSObject {
 
     /// The host app's name as its users see it ("Trio", "Loop"), sent for the watch
     /// to show, as LupedSmartwatchKit does; `nil` if the app declares none.
-    static var hostName: String? {
+    public static var hostName: String? {
         let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
         return name?.isEmpty == false ? name : nil
