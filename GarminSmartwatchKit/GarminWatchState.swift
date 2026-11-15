@@ -325,19 +325,27 @@ public extension GarminWatchState {
         }
     }
 
+    /// How far apart another app's copy of a reading can be from the host's own: as
+    /// LoopKit's `GlucoseStore.duplicateTolerance`. Each app's G7 plugin dates a
+    /// reading from its own clock (the sensor's age subtracted from when it heard
+    /// it), so the two copies differ by a fraction of a second, either way.
+    static let sameReadingTolerance: TimeInterval = 2 * 60
+
     /// The host's own readings, and other apps' only after its newest own one. Its
     /// own are those stamped with the app the plugin runs in, as LoopKit stamps its
     /// CGM's (`HKSource.default()`). Loop also takes in every other app's glucose
-    /// from Apple Health, Trio's for one: the same reading again, at the same time
-    /// and without a trend, which gave a delta of 0 and no arrow. Newer ones still
-    /// count, so the watch follows Loop when its CGM stops and another app's
-    /// readings carry on. A host whose readings don't carry its identifier (Trio's),
-    /// or that has only other apps' readings (Loop with glucose from Health), keeps them all.
+    /// from Apple Health, Trio's for one: the same reading again, within a second
+    /// and without a trend, which gave a delta of 0 and no arrow. Readings more than
+    /// `sameReadingTolerance` newer still count, so the watch follows Loop when its
+    /// CGM stops and another app's readings carry on. A host whose readings don't
+    /// carry its identifier (Trio's), or that has only other apps' readings (Loop
+    /// with glucose from Health), keeps them all.
     static func hostReadings(_ samples: [StoredGlucoseSample], hostIdentifier: String?) -> [StoredGlucoseSample] {
         guard let hostIdentifier,
               let newestOwn = samples.filter({ $0.provenanceIdentifier == hostIdentifier }).map(\.startDate).max()
         else { return samples }
-        return samples.filter { $0.provenanceIdentifier == hostIdentifier || $0.startDate > newestOwn }
+        let othersAfter = newestOwn.addingTimeInterval(sameReadingTolerance)
+        return samples.filter { $0.provenanceIdentifier == hostIdentifier || $0.startDate > othersAfter }
     }
 
     /// The readings after the newest to send, newest first: those less than

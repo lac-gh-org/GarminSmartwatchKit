@@ -323,10 +323,12 @@ import Testing
         )
     }
 
-    @Test("In Loop, Trio's copies from Apple Health are left out: same time, no trend") func otherAppsCopies() {
-        // Each reading twice at the same time: Loop's CGM's with its trend, Trio's without; Trio's first.
-        let history = [(10.0, 160.0), (5, 155), (0, 150)].flatMap { minutesAgo, value in
-            [reading(from: trio, minutesAgo: minutesAgo, value, nil), reading(from: loop, minutesAgo: minutesAgo, value, .down)]
+    @Test("In Loop, Trio's copies from Apple Health are left out: within a second, no trend") func otherAppsCopies() {
+        // Each reading twice: Loop's CGM's with its trend, and Trio's without, dated by
+        // Trio's own G7 plugin a fraction of a second earlier or later. The newest
+        // copy is later, as in the Loop report where the watch showed +0 and no arrow.
+        let history = [(10.0, 160.0, -0.3), (5, 155, 0), (0, 150, 0.4)].flatMap { minutesAgo, value, trioLater in
+            [reading(from: trio, minutesAgo: minutesAgo - trioLater / 60, value, nil), reading(from: loop, minutesAgo: minutesAgo, value, .down)]
         }
         let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now, hostIdentifier: loop)
         #expect(states[0].sgv == 150)
@@ -345,6 +347,10 @@ import Testing
         let readings = GarminWatchState.hostReadings(history, hostIdentifier: loop)
         #expect(readings.map(\.provenanceIdentifier) == [loop, trio, trio])
         #expect(readings.map { $0.quantity.doubleValue(for: .milligramsPerDeciliter) } == [160, 155, 150])
+
+        // A copy up to sameReadingTolerance after the host's newest is the same reading.
+        let copy = [reading(from: loop, minutesAgo: 2, 160, .flat), reading(from: trio, minutesAgo: 0.1, 160, nil)]
+        #expect(GarminWatchState.hostReadings(copy, hostIdentifier: loop).map(\.provenanceIdentifier) == [loop])
     }
 
     @Test("Readings that aren't the host's own are all kept: Trio's, and Loop's from Health only") func noOwnReadings() {
