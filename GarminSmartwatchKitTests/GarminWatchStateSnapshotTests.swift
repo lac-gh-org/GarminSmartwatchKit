@@ -311,6 +311,51 @@ import Testing
         #expect(first?.targetGlucose == 104, "5.8 mmol/L is 104.49 mg/dL")
     }
 
+    private let loop = "com.example.Loop"
+    private let trio = "org.example.Trio"
+
+    private func reading(from source: String, minutesAgo: Double, _ mgdL: Double, _ trend: GlucoseTrend?) -> StoredGlucoseSample {
+        StoredGlucoseSample(
+            provenanceIdentifier: source,
+            startDate: now.addingTimeInterval(-minutesAgo * 60),
+            quantity: LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: mgdL),
+            trend: trend
+        )
+    }
+
+    @Test("In Loop, Trio's copies from Apple Health are left out: same time, no trend") func otherAppsCopies() {
+        // Each reading twice at the same time: Loop's CGM's with its trend, Trio's without; Trio's first.
+        let history = [(10.0, 160.0), (5, 155), (0, 150)].flatMap { minutesAgo, value in
+            [reading(from: trio, minutesAgo: minutesAgo, value, nil), reading(from: loop, minutesAgo: minutesAgo, value, .down)]
+        }
+        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now, hostIdentifier: loop)
+        #expect(states[0].sgv == 150)
+        #expect(states[0].delta == -5, "from Loop's reading 5 minutes before, not Trio's copy")
+        #expect(states[0].direction == "FortyFiveDown", "the trend from Loop's CGM")
+        #expect(states.dropFirst().map(\.sgv) == [155, 160])
+    }
+
+    @Test("Another app's readings after the host's newest still count, as when Loop's CGM stops") func newerOtherReadings() {
+        let history = [
+            reading(from: loop, minutesAgo: 10, 160, .flat),
+            reading(from: trio, minutesAgo: 10, 160, nil),
+            reading(from: trio, minutesAgo: 5, 155, nil),
+            reading(from: trio, minutesAgo: 0, 150, nil),
+        ]
+        let readings = GarminWatchState.hostReadings(history, hostIdentifier: loop)
+        #expect(readings.map(\.provenanceIdentifier) == [loop, trio, trio])
+        #expect(readings.map { $0.quantity.doubleValue(for: .milligramsPerDeciliter) } == [160, 155, 150])
+    }
+
+    @Test("Readings that aren't the host's own are all kept: Trio's, and Loop's from Health only") func noOwnReadings() {
+        let history = [reading(from: trio, minutesAgo: 5, 155, .flat), reading(from: trio, minutesAgo: 0, 150, .flat)]
+        #expect(GarminWatchState.hostReadings(history, hostIdentifier: loop) == history)
+        #expect(GarminWatchState.hostReadings(history, hostIdentifier: nil) == history)
+        // Trio's host stamps none: all carry LoopKit's default.
+        let unstamped = series(every: 5, for: 10)
+        #expect(GarminWatchState.hostReadings(unstamped, hostIdentifier: trio) == unstamped)
+    }
+
     @Test("Loop's insulin sensitivity, in a glucose unit with per unit implied, is sent as Trio's") func loopInsulinSensitivity() {
         let mgdLHost = hostData(history: [reading(minutesAgo: 0, 100)], insulinSensitivity: mgdL(54.4))
         #expect(GarminWatchState.states(from: mgdLHost, options: options, now: now).first?.isf == 54)
