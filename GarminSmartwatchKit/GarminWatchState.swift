@@ -297,7 +297,7 @@ public extension GarminWatchState {
         first.iob = formattedIOB(loop.insulinOnBoard?.value ?? 0)
         first.cob = loop.carbsOnBoard?.quantity.doubleValue(for: .gram)
         first.tbr = host.tempBasal?.unitsPerHour ?? host.scheduledBasalRate?.doubleValue(for: .internationalUnitsPerHour)
-        first.isf = host.insulinSensitivity.flatMap { mgdL($0.doubleValue(for: .milligramsPerDeciliterPerInternationalUnit)) }
+        first.isf = host.insulinSensitivity.flatMap(mgdLPerUnit).flatMap(mgdL)
         first.eventualBG = loop.eventualGlucose.flatMap { mgdL(mgdLValue($0)) }
         first.sensRatio = loop.sensitivityRatio
         first.targetGlucose = host.correctionRange.flatMap {
@@ -398,6 +398,19 @@ public extension GarminWatchState {
 
     private static func mgdLValue(_ quantity: LoopQuantity) -> Double {
         quantity.doubleValue(for: .milligramsPerDeciliter)
+    }
+
+    /// The insulin sensitivity in mg/dL per unit. Trio gives it per unit; Loop as its
+    /// schedule stores it, in a glucose unit with "per unit" implied. Any other unit
+    /// leaves it off: LoopKit's conversion traps on an incompatible unit.
+    static func mgdLPerUnit(_ quantity: LoopQuantity) -> Double? {
+        if quantity.is(compatibleWith: .milligramsPerDeciliterPerInternationalUnit) {
+            return quantity.doubleValue(for: .milligramsPerDeciliterPerInternationalUnit)
+        }
+        if quantity.is(compatibleWith: .milligramsPerDeciliter) {
+            return quantity.doubleValue(for: .milligramsPerDeciliter)
+        }
+        return nil
     }
 
     private static func mgdL(_ value: Double) -> Int16? {

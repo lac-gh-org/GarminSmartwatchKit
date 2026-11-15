@@ -311,6 +311,21 @@ import Testing
         #expect(first?.targetGlucose == 104, "5.8 mmol/L is 104.49 mg/dL")
     }
 
+    @Test("Loop's insulin sensitivity, in a glucose unit with per unit implied, is sent as Trio's") func loopInsulinSensitivity() {
+        let mgdLHost = hostData(history: [reading(minutesAgo: 0, 100)], insulinSensitivity: mgdL(54.4))
+        #expect(GarminWatchState.states(from: mgdLHost, options: options, now: now).first?.isf == 54)
+
+        let mmolHost = hostData(history: [reading(minutesAgo: 0, 100)], insulinSensitivity: LoopQuantity(unit: .millimolesPerLiter, doubleValue: 3))
+        #expect(GarminWatchState.states(from: mmolHost, options: options, now: now).first?.isf == 54)
+    }
+
+    @Test("An insulin sensitivity in a unit that isn't one is left off, not converted") func otherInsulinSensitivityUnit() {
+        let host = hostData(history: [reading(minutesAgo: 0, 100)], insulinSensitivity: LoopQuantity(unit: .gram, doubleValue: 10))
+        let first = GarminWatchState.states(from: host, options: options, now: now).first
+        #expect(first?.sgv == 100, "the rest is still sent")
+        #expect(first?.isf == nil)
+    }
+
     @Test("Trends map to Nightscout directions; small IOB stays visible") func directionsAndIOB() {
         #expect(GlucoseTrend.allCases.map(GarminWatchState.direction) == [
             "DoubleUp", "SingleUp", "FortyFiveUp", "Flat", "FortyFiveDown", "SingleDown", "DoubleDown"
