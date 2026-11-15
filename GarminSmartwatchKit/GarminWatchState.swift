@@ -276,9 +276,11 @@ public extension GarminWatchState {
     static func states(
         from host: GarminHostData,
         options: DisplayOptions,
-        now: Date = Date()
+        now: Date = Date(),
+        hostIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> [GarminWatchState] {
-        let readings = host.glucoseSamples.sorted { $0.startDate > $1.startDate }
+        let readings = hostReadings(host.glucoseSamples, hostIdentifier: hostIdentifier)
+            .sorted { $0.startDate > $1.startDate }
         guard let latest = readings.first else { return [] }
         let latestGlucose = mgdLValue(latest.quantity)
         let loop = host.loopState
@@ -321,6 +323,21 @@ public extension GarminWatchState {
             state.sgv = mgdL(mgdLValue(reading.quantity))
             return state
         }
+    }
+
+    /// The host's own readings, and other apps' only after its newest own one. Its
+    /// own are those stamped with the app the plugin runs in, as LoopKit stamps its
+    /// CGM's (`HKSource.default()`). Loop also takes in every other app's glucose
+    /// from Apple Health, Trio's for one: the same reading again, at the same time
+    /// and without a trend, which gave a delta of 0 and no arrow. Newer ones still
+    /// count, so the watch follows Loop when its CGM stops and another app's
+    /// readings carry on. A host whose readings don't carry its identifier (Trio's),
+    /// or that has only other apps' readings (Loop with glucose from Health), keeps them all.
+    static func hostReadings(_ samples: [StoredGlucoseSample], hostIdentifier: String?) -> [StoredGlucoseSample] {
+        guard let hostIdentifier,
+              let newestOwn = samples.filter({ $0.provenanceIdentifier == hostIdentifier }).map(\.startDate).max()
+        else { return samples }
+        return samples.filter { $0.provenanceIdentifier == hostIdentifier || $0.startDate > newestOwn }
     }
 
     /// The readings after the newest to send, newest first: those less than
