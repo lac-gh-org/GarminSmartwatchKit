@@ -1,10 +1,14 @@
 # Runs GarminSmartwatchKitTests for any branch of this fork, on demand.
 #
 # The kit can't build on its own: its project takes LoopKit from the
-# surrounding workspace. So this checks out TrioGarminTest with its submodules
-# (Trio's workspace, LoopKit and the rest), moves the GarminSmartwatchKit
-# submodule to the commit under test, and runs the kit's tests there on an
-# iPhone simulator, unsigned.
+# surrounding workspace. So this checks out a host workspace with its
+# submodules (LoopKit and the rest), moves the GarminSmartwatchKit submodule to
+# the commit under test, and runs the kit's tests there on an iPhone simulator,
+# unsigned.
+#
+# The host is Loop's workspace (LoopWorkspaceGarminTest) by default: the kit's
+# tests need LoopKit next-dev, as dabear's main does, and Trio's LoopKit isn't
+# on it yet. Choose Trio (TrioGarminTest) once it is.
 #
 # Run it from the Actions tab: "Kit tests" > "Run workflow".
 
@@ -17,17 +21,25 @@ on:
         description: GarminSmartwatchKit branch, tag or commit in this fork to test
         type: string
         required: true
-        default: status-reply-history-count
-      trio_ref:
-        description: TrioGarminTest branch that provides the workspace and LoopKit
-        type: string
+        default: trio-app
+      host:
+        description: Host workspace that provides LoopKit (the kit's tests need LoopKit next-dev)
+        type: choice
         required: true
-        default: watch-plugins-test-trio-app
+        default: loop
+        options:
+          - loop
+          - trio
+      host_ref:
+        description: Host branch; empty for smartwatch-manager-review-garmin-app (Loop) or watch-plugins-test-trio-app (Trio)
+        type: string
+        required: false
+        default: ''
       runner:
         description: macOS runner image; try another when one's queue is stuck (each needs an Xcode 26)
         type: choice
         required: true
-        default: macos-26
+        default: macos-15
         options:
           - macos-26
           - macos-15
@@ -44,6 +56,9 @@ jobs:
     env:
       KIT_REF: ${{ inputs.kit_ref }}
       KIT_REPO: ${{ github.server_url }}/${{ github.repository }}.git
+      HOST_REPO: ${{ inputs.host == 'trio' && 'lac-gh-org/TrioGarminTest' || 'lac-gh-org/LoopWorkspaceGarminTest' }}
+      HOST_REF: ${{ inputs.host_ref != '' && inputs.host_ref || (inputs.host == 'trio' && 'watch-plugins-test-trio-app' || 'smartwatch-manager-review-garmin-app') }}
+      HOST_WORKSPACE: ${{ inputs.host == 'trio' && 'Trio.xcworkspace' || 'LoopWorkspace.xcworkspace' }}
     steps:
       # The newest Xcode 26 the runner has. Trio's own build pins 26.5
       # (build_trio.yml); taking the newest instead keeps this running when an
@@ -64,11 +79,11 @@ jobs:
             echo "- Xcode: $(xcodebuild -version | head -n 1) ($(basename "$XCODE"))"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Check out TrioGarminTest and its submodules
+      - name: Check out the host workspace and its submodules
         uses: actions/checkout@v5
         with:
-          repository: lac-gh-org/TrioGarminTest
-          ref: ${{ inputs.trio_ref }}
+          repository: ${{ env.HOST_REPO }}
+          ref: ${{ env.HOST_REF }}
           submodules: recursive
 
       - name: Move GarminSmartwatchKit to the commit under test
@@ -78,7 +93,7 @@ jobs:
           git checkout --detach FETCH_HEAD
           {
             echo "- GarminSmartwatchKit: \`$KIT_REF\` at $(git log -1 --format='%h %s')"
-            echo "- TrioGarminTest: \`${{ inputs.trio_ref }}\`, LoopKit at $(git -C ../LoopKit log -1 --format='%h')"
+            echo "- Host: $HOST_REPO \`$HOST_REF\`, LoopKit at $(git -C ../LoopKit log -1 --format='%h')"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Pick an iPhone simulator
@@ -100,7 +115,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -workspace Trio.xcworkspace \
+            -workspace "$HOST_WORKSPACE" \
             -scheme GarminSmartwatchKit \
             -destination "id=$SIM_ID" \
             -resultBundlePath TestResults.xcresult \
