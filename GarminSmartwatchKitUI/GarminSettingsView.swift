@@ -203,8 +203,20 @@ struct GarminSettingsView: View {
                     ForEach(GarminGlucoseColorScheme.allCases) { Text($0.displayName).tag($0) }
                 }
             }
+            Picker(LocalizedString("Time in Range", comment: "Garmin settings: time in range period"), selection: $model.settings.timeInRangePeriod) {
+                ForEach(GarminTimeInRangePeriod.allCases) { Text($0.displayName).tag($0) }
+            }
+            if model.settings.timeInRangePeriod != .off {
+                Picker(LocalizedString("Range", comment: "Garmin settings: time in range bounds"), selection: $model.settings.timeInRangeTarget) {
+                    ForEach(GarminTimeInRangeTarget.allCases) {
+                        Text($0.displayName(isMillimolesPerLiter: model.manager.isMillimolesPerLiterHost)).tag($0)
+                    }
+                }
+            }
         } header: {
             Text(LocalizedString("Display", comment: "Garmin settings: display section"))
+        } footer: {
+            Text(LocalizedString("Time in Range is shown by WatchAID, once there's an hour of readings.", comment: "Garmin settings: time in range footer"))
         }
     }
 }

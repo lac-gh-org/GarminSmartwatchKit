@@ -88,6 +88,14 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
     /// The forecast cone's upper edge in raw mg/dL, as `forecastLow`.
     var forecastHigh: [Int16]?
 
+    /// Time in range, in whole percent adding up to 100: the readings below, in and
+    /// above the range (`GarminTimeInRangeTarget`) over the chosen period
+    /// (`GarminTimeInRangePeriod`). Only in the first entry, and all three or none:
+    /// none when it's off or the period holds under an hour of readings.
+    var tirLow: Int?
+    var tirInRange: Int?
+    var tirHigh: Int?
+
     public static func == (lhs: GarminWatchState, rhs: GarminWatchState) -> Bool {
         lhs.date == rhs.date &&
             lhs.glucoseDate == rhs.glucoseDate &&
@@ -109,7 +117,10 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
             lhs.host == rhs.host &&
             lhs.forecastDate == rhs.forecastDate &&
             lhs.forecastLow == rhs.forecastLow &&
-            lhs.forecastHigh == rhs.forecastHigh
+            lhs.forecastHigh == rhs.forecastHigh &&
+            lhs.tirLow == rhs.tirLow &&
+            lhs.tirInRange == rhs.tirInRange &&
+            lhs.tirHigh == rhs.tirHigh
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -134,6 +145,9 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         hasher.combine(forecastDate)
         hasher.combine(forecastLow)
         hasher.combine(forecastHigh)
+        hasher.combine(tirLow)
+        hasher.combine(tirInRange)
+        hasher.combine(tirHigh)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -158,6 +172,9 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         case forecastDate
         case forecastLow
         case forecastHigh
+        case tirLow
+        case tirInRange
+        case tirHigh
     }
 
     /// Custom encoding that excludes nil values from the JSON output
@@ -186,6 +203,9 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
         try container.encodeIfPresent(forecastDate, forKey: .forecastDate)
         try container.encodeIfPresent(forecastLow, forKey: .forecastLow)
         try container.encodeIfPresent(forecastHigh, forKey: .forecastHigh)
+        try container.encodeIfPresent(tirLow, forKey: .tirLow)
+        try container.encodeIfPresent(tirInRange, forKey: .tirInRange)
+        try container.encodeIfPresent(tirHigh, forKey: .tirHigh)
     }
 
     private static func twoPlaces(_ value: Double) -> Double {
@@ -228,8 +248,16 @@ public struct GarminHostData {
         self.glucoseDisplayLimits = glucoseDisplayLimits
     }
 
-    /// How far back the readings reach.
+    /// How far back the readings the watch shows reach.
     public static let historyInterval: TimeInterval = 3 * 60 * 60
+
+    /// How far back to read: far enough for the time in range of either period,
+    /// whichever is chosen, so changing the setting needs no new read. Today can
+    /// reach back 25 hours, on the day the clocks go back.
+    public static func readingsStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        GarminTimeInRangePeriod.allCases.compactMap { $0.start(now: now, calendar: calendar) }
+            .reduce(now.addingTimeInterval(-historyInterval), min)
+    }
 }
 
 /// Garmin's watch state built only from what the host's delegate returns,
@@ -249,6 +277,10 @@ public extension GarminWatchState {
         public var historySpacing: TimeInterval
         /// The host app's name for the watch to show (`GarminSmartwatchManager.hostName`).
         public var hostName: String?
+        /// Which readings the time in range counts; off sends none.
+        public var timeInRangePeriod: GarminTimeInRangePeriod
+        /// The range the time in range counts as in range.
+        public var timeInRangeTarget: GarminTimeInRangeTarget
 
         public init(
             primaryAttributeChoice: String,
@@ -256,7 +288,9 @@ public extension GarminWatchState {
             glucoseColorScheme: String,
             historySpan: TimeInterval,
             historySpacing: TimeInterval,
-            hostName: String? = nil
+            hostName: String? = nil,
+            timeInRangePeriod: GarminTimeInRangePeriod = .off,
+            timeInRangeTarget: GarminTimeInRangeTarget = .standard
         ) {
             self.primaryAttributeChoice = primaryAttributeChoice
             self.secondaryAttributeChoice = secondaryAttributeChoice
@@ -264,6 +298,8 @@ public extension GarminWatchState {
             self.historySpan = historySpan
             self.historySpacing = historySpacing
             self.hostName = hostName
+            self.timeInRangePeriod = timeInRangePeriod
+            self.timeInRangeTarget = timeInRangeTarget
         }
     }
 
@@ -272,14 +308,19 @@ public extension GarminWatchState {
     static let historySpacingTolerance: TimeInterval = 30
 
     /// Newest reading first, like dev's GarminManager: the first entry carries
-    /// every value, the others only their time and glucose. Empty without readings.
+    /// every value, the others only their time and glucose. Empty without readings
+    /// in the last `GarminHostData.historyInterval`.
     static func states(
         from host: GarminHostData,
         options: DisplayOptions,
         now: Date = Date(),
         hostIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> [GarminWatchState] {
-        let readings = hostReadings(host.glucoseSamples, hostIdentifier: hostIdentifier)
+        // The host is read further back for the time in range; everything else
+        // shows only the last few hours.
+        let allReadings = hostReadings(host.glucoseSamples, hostIdentifier: hostIdentifier)
+        let historyStart = now.addingTimeInterval(-GarminHostData.historyInterval)
+        let readings = allReadings.filter { $0.startDate >= historyStart }
             .sorted { $0.startDate > $1.startDate }
         guard let latest = readings.first else { return [] }
         let latestGlucose = mgdLValue(latest.quantity)
@@ -315,6 +356,14 @@ public extension GarminWatchState {
             first.forecastDate = milliseconds(start)
             first.forecastLow = cone.map(\.low)
             first.forecastHigh = cone.map(\.high)
+        }
+
+        if let start = options.timeInRangePeriod.start(now: now),
+           let percentages = timeInRange(allReadings.filter { $0.startDate >= start }, bounds: options.timeInRangeTarget.bounds)
+        {
+            first.tirLow = percentages.low
+            first.tirInRange = percentages.inRange
+            first.tirHigh = percentages.high
         }
 
         return [first] + history(after: readings, options: options).map { reading in
@@ -363,6 +412,32 @@ public extension GarminWatchState {
             lastSent = reading.startDate
         }
         return sent
+    }
+
+    /// Less than this from a period's oldest reading to its newest gives no time in
+    /// range, so just after midnight Today shows none rather than 0% or 100%.
+    static let timeInRangeMinimumSpan: TimeInterval = 60 * 60
+
+    /// The share of readings below, in (both ends included) and above `bounds`, in
+    /// mg/dL, counted as Trio's Statistics screen counts them: by reading, not by
+    /// time. Whole percentages that add up to 100: rounded, then the largest takes
+    /// the difference. `nil` when the readings span under `timeInRangeMinimumSpan`.
+    static func timeInRange(_ readings: [StoredGlucoseSample], bounds: ClosedRange<Double>) -> (low: Int, inRange: Int, high: Int)? {
+        let dates = readings.map(\.startDate)
+        guard let oldest = dates.min(), let newest = dates.max(),
+              newest.timeIntervalSince(oldest) >= timeInRangeMinimumSpan
+        else { return nil }
+        let values = readings.map { mgdLValue($0.quantity) }
+        let counts = [
+            values.filter { $0 < bounds.lowerBound }.count,
+            values.filter { bounds.contains($0) }.count,
+            values.filter { $0 > bounds.upperBound }.count
+        ]
+        var percentages = counts.map { Int((Double($0) * 100 / Double(values.count)).rounded()) }
+        if let largest = counts.indices.max(by: { counts[$0] < counts[$1] }) {
+            percentages[largest] += 100 - percentages.reduce(0, +)
+        }
+        return (low: percentages[0], inRange: percentages[1], high: percentages[2])
     }
 
     /// Nightscout direction names, which Garmin's watch apps read.
