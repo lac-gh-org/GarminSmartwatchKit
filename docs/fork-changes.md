@@ -6,11 +6,13 @@ Keep this list up to date with each change; drop an entry once it's merged.
 
 This file is for the fork only: leave it out of upstream PRs.
 
-## Already in a PR
+## Merged upstream
 
-- **Loop fixes**, branch `loop-plugin-fixes` on dabear's repo (opened 2026-11-15):
-  plugin binary as a dynamic library (910df21), insulin sensitivity in Loop's unit
-  (5be6d2f), the host's own glucose readings (89d3dd4, 06c704f).
+- **Loop fixes**, PR #3, merged 2026-11-16 as e737268: plugin binary as a dynamic
+  library (910df21), insulin sensitivity in Loop's unit (5be6d2f), the host's own
+  glucose readings (89d3dd4, 06c704f). Our copies drop out when trio-app merges
+  dabear's main, which needs LoopKit next-dev (wait for Trio's branch to move;
+  loop-app can take it now, with dabear's updated LoopWorkspace branch).
 
 ## Still to PR, in a sensible order
 
