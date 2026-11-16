@@ -69,7 +69,7 @@ import Testing
             ),
             scheduledBasalRate: scheduledBasalRate.map { LoopQuantity(unit: .internationalUnitsPerHour, doubleValue: $0) },
             tempBasal: tempBasalRate.map {
-                DoseEntry(type: .tempBasal, startDate: now, endDate: now.addingTimeInterval(1800), value: $0, unit: .unitsPerHour, decisionId: nil)
+                DoseEntry(type: .tempBasal, startDate: now, endDate: now.addingTimeInterval(1800), value: $0, unit: .unitsPerHour)
             },
             insulinSensitivity: insulinSensitivity,
             correctionRange: correctionRange
@@ -79,7 +79,7 @@ import Testing
     @Test("The display limits are read but not sent to the watch yet") func displayLimitsNotSent() {
         let history = [reading(minutesAgo: 5, 104), reading(minutesAgo: 0, 110, .up)]
         var withLimits = hostData(history: history)
-        withLimits.glucoseDisplayLimits = SmartwatchGlucoseDisplayLimits(low: mgdL(70), high: mgdL(180))
+        withLimits.glucoseDisplayLimits = mgdL(70)...mgdL(180)
         #expect(withLimits.glucoseDisplayLimits != nil)
         #expect(
             GarminWatchState.states(from: withLimits, options: options, now: now)

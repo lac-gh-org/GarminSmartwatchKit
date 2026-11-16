@@ -20,7 +20,7 @@ It is derived from Trio's `GarminManager`, `GarminWatchState` and `GarminWatchSe
 - **Frameworks:** `GarminSmartwatchKit` and `GarminSmartwatchKitUI`, for hosts that link plugins (Trio).
 - **Plugin bundle:** `GarminSmartwatchPlugin.loopplugin`, for hosts that load plugin bundles (Loop). Its `Info.plist` still sets `com.loopkit.Loop.PluginComingSoon`, but no host reads that key any more: Loop's Garmin and personal builds load the plugin and offer it in Add Watch like any watch.
 - **Dependencies:** LoopKit and LoopKitUI (the `next-dev` API, as Loop and Trio since #1718 use) from the host's workspace, and Garmin's [Connect IQ SDK](https://github.com/garmin/connectiq-companion-app-sdk-ios) (Swift package).
-- **Host app:** needs a URL scheme (Garmin Connect calls back with the chosen watches; the host passes that URL to `watchHostDidReceiveURL`) and `LSApplicationQueriesSchemes` for Garmin Connect (`gcm-ciq`), as Trio and Loop's Garmin and personal branches have.
+- **Host app:** needs a URL scheme (Garmin Connect calls back with the chosen watches; the host passes that URL to `hostDidReceiveURL`) and `LSApplicationQueriesSchemes` for Garmin Connect (`gcm-ciq`), as Trio and Loop's Garmin and personal branches have.
 
 The project is generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`; the generated project is committed.
 

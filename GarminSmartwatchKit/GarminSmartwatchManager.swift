@@ -312,7 +312,7 @@ public final class GarminSmartwatchManager: NSObject {
             guard let mock = URL(string: "garminconnect-mock://device-select?scheme=\(scheme)") else { return }
             UIApplication.shared.open(mock) { [weak self] opened in
                 guard !opened else { return }
-                _ = self?.watchHostDidReceiveURL(fallback)
+                _ = self?.hostDidReceiveURL(fallback)
             }
         }
     #endif
@@ -667,7 +667,7 @@ extension GarminSmartwatchManager: SmartwatchManager {
 
     /// Garmin Connect's device-selection callback.
     @MainActor
-    public func watchHostDidReceiveURL(_ url: URL) -> Bool {
+    public func hostDidReceiveURL(_ url: URL) -> Bool {
         guard URLComponents(url: url, resolvingAgainstBaseURL: false)?.host == "device-select-resp" else { return false }
         parseDevices(for: url)
         return true

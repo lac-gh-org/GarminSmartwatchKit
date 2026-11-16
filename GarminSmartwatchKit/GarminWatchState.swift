@@ -226,7 +226,7 @@ public struct GarminHostData {
     public var correctionRange: ClosedRange<LoopQuantity>?
     /// The host's low and high glucose limits, for display only (never for alarms).
     /// Read but not sent to the watch yet: no Garmin watch app uses them so far.
-    public var glucoseDisplayLimits: SmartwatchGlucoseDisplayLimits?
+    public var glucoseDisplayLimits: ClosedRange<LoopQuantity>?
 
     public init(
         displayUnit: LoopUnit,
@@ -236,7 +236,7 @@ public struct GarminHostData {
         tempBasal: DoseEntry? = nil,
         insulinSensitivity: LoopQuantity? = nil,
         correctionRange: ClosedRange<LoopQuantity>? = nil,
-        glucoseDisplayLimits: SmartwatchGlucoseDisplayLimits? = nil
+        glucoseDisplayLimits: ClosedRange<LoopQuantity>? = nil
     ) {
         self.displayUnit = displayUnit
         self.glucoseSamples = glucoseSamples

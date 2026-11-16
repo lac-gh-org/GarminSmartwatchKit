@@ -10,9 +10,8 @@ This file is for the fork only: leave it out of upstream PRs.
 
 - **Loop fixes**, PR #3, merged 2026-11-16 as e737268: plugin binary as a dynamic
   library (910df21), insulin sensitivity in Loop's unit (5be6d2f), the host's own
-  glucose readings (89d3dd4, 06c704f). Our copies drop out when trio-app merges
-  dabear's main, which needs LoopKit next-dev (wait for Trio's branch to move;
-  loop-app can take it now, with dabear's updated LoopWorkspace branch).
+  glucose readings (89d3dd4, 06c704f). trio-app and loop-app merged dabear's main
+  (up to bc42aee, hostDidReceiveURL) on 2026-11-16.
 
 ## Still to PR, in a sensible order
 
@@ -49,3 +48,7 @@ This file is for the fork only: leave it out of upstream PRs.
 - 61ef5d2, the test helper rename after dabear's SmartwatchManager rework (his main
   made the same rename in fb83e6c; check nothing else is left in it).
 - This file.
+
+The kit's tests need LoopKit next-dev (dabear's 8e8ef67), so "Kit tests" CI runs
+them in Loop's workspace until Trio's LoopKit is on next-dev. Trio builds still
+compile the kit's code, just not its tests.
