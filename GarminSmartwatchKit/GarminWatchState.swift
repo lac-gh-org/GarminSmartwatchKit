@@ -91,7 +91,7 @@ public struct GarminWatchState: Hashable, Equatable, Sendable, Encodable {
     /// Time in range, in whole percent adding up to 100: the readings below, in and
     /// above the range (`GarminTimeInRangeTarget`) over the chosen period
     /// (`GarminTimeInRangePeriod`). Only in the first entry, and all three or none:
-    /// none when it's off or the period holds under an hour of readings.
+    /// none when it's off or the period has no readings.
     var tirLow: Int?
     var tirInRange: Int?
     var tirHigh: Int?
@@ -255,7 +255,7 @@ public struct GarminHostData {
     /// whichever is chosen, so changing the setting needs no new read. Today can
     /// reach back 25 hours, on the day the clocks go back.
     public static func readingsStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
-        GarminTimeInRangePeriod.allCases.compactMap { $0.start(now: now, calendar: calendar) }
+        GarminTimeInRangePeriod.allCases.map { $0.start(now: now, calendar: calendar) }
             .reduce(now.addingTimeInterval(-historyInterval), min)
     }
 }
@@ -277,8 +277,8 @@ public extension GarminWatchState {
         public var historySpacing: TimeInterval
         /// The host app's name for the watch to show (`GarminSmartwatchManager.hostName`).
         public var hostName: String?
-        /// Which readings the time in range counts; off sends none.
-        public var timeInRangePeriod: GarminTimeInRangePeriod
+        /// Which readings the time in range counts; `nil` (off) sends none.
+        public var timeInRangePeriod: GarminTimeInRangePeriod?
         /// The range the time in range counts as in range.
         public var timeInRangeTarget: GarminTimeInRangeTarget
 
@@ -289,7 +289,7 @@ public extension GarminWatchState {
             historySpan: TimeInterval,
             historySpacing: TimeInterval,
             hostName: String? = nil,
-            timeInRangePeriod: GarminTimeInRangePeriod = .off,
+            timeInRangePeriod: GarminTimeInRangePeriod? = nil,
             timeInRangeTarget: GarminTimeInRangeTarget = .standard
         ) {
             self.primaryAttributeChoice = primaryAttributeChoice
@@ -358,7 +358,7 @@ public extension GarminWatchState {
             first.forecastHigh = cone.map(\.high)
         }
 
-        if let start = options.timeInRangePeriod.start(now: now),
+        if let start = options.timeInRangePeriod?.start(now: now),
            let percentages = timeInRange(allReadings.filter { $0.startDate >= start }, bounds: options.timeInRangeTarget.bounds)
         {
             first.tirLow = percentages.low
@@ -414,19 +414,12 @@ public extension GarminWatchState {
         return sent
     }
 
-    /// Less than this from a period's oldest reading to its newest gives no time in
-    /// range, so just after midnight Today shows none rather than 0% or 100%.
-    static let timeInRangeMinimumSpan: TimeInterval = 60 * 60
-
     /// The share of readings below, in (both ends included) and above `bounds`, in
-    /// mg/dL, counted as Trio's Statistics screen counts them: by reading, not by
-    /// time. Whole percentages that add up to 100: rounded, then the largest takes
-    /// the difference. `nil` when the readings span under `timeInRangeMinimumSpan`.
+    /// mg/dL, counted as Trio's home stats panel counts them: by reading, not by
+    /// time, from the first reading on. Whole percentages that add up to 100:
+    /// rounded, then the largest takes the difference. `nil` without readings.
     static func timeInRange(_ readings: [StoredGlucoseSample], bounds: ClosedRange<Double>) -> (low: Int, inRange: Int, high: Int)? {
-        let dates = readings.map(\.startDate)
-        guard let oldest = dates.min(), let newest = dates.max(),
-              newest.timeIntervalSince(oldest) >= timeInRangeMinimumSpan
-        else { return nil }
+        guard !readings.isEmpty else { return nil }
         let values = readings.map { mgdLValue($0.quantity) }
         let counts = [
             values.filter { $0 < bounds.lowerBound }.count,

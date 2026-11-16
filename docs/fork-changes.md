@@ -24,9 +24,12 @@ This file is for the fork only: leave it out of upstream PRs.
 3. **Glucose Colors hidden for a Loop host** (7eb8e4b): needs 2. Uses the host name
    because nothing in the delegate exposes the host's look; raise this with dabear
    (his rule: no functionality from the host name when the delegate exposes it).
-4. **Time in range** (2026-11-15): settings Time in Range (Today, the default as in
-   Trio / Past 24 Hours / Off) and Range (70–180 / 70–140 mg/dL); `tirLow`, `tirInRange`, `tirHigh` in the
-   first entry, whole percent adding up to 100, none under an hour of readings.
+4. **Time in range** (2026-11-15, matched to Trio's home stats panel 2026-11-16):
+   a Time in Range settings section: Show on Watch (on by default, as Trio's home
+   panel), then Period (Today, the default as in Trio / Past 24 Hours) and
+   Range (Standard 70–180, default / Extended 63–180 mg/dL, Trio's
+   `TimeInRangeType`); `tirLow`, `tirInRange`, `tirHigh` in the first entry, whole
+   percent adding up to 100, from the first reading of the period on.
    The host is now read back 24 h (25 h on the day the clocks go back), not 3 h;
    what the watch shows still covers 3 h. Comes with the WatchAID arc that uses it.
    - Possible follow-up: Trio has its own Statistics Range and lower limit

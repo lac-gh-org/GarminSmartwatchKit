@@ -191,7 +191,7 @@ public final class GarminSmartwatchManager: NSObject {
             historySpan: settings.watchface.historySpan,
             historySpacing: settings.watchface.historySpacing,
             hostName: Self.hostName,
-            timeInRangePeriod: settings.timeInRangePeriod,
+            timeInRangePeriod: settings.isTimeInRangeEnabled ? settings.timeInRangePeriod : nil,
             timeInRangeTarget: settings.timeInRangeTarget
         )
         return try? JSONEncoder().encode(GarminWatchState.states(from: host, options: options))
