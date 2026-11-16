@@ -382,10 +382,11 @@ import Testing
     }
 
     @Test("Time in range counts readings, both ends of the range in range") func timeInRangeBounds() {
-        // 69 low, 70 and 180 in range, 181 high, over an hour.
-        let readings = [reading(minutesAgo: 60, 69), reading(minutesAgo: 40, 70), reading(minutesAgo: 20, 180), reading(minutesAgo: 0, 181)]
-        #expect(percentages(readings) == [25, 50, 25])
-        #expect(percentages(readings, .tight) == [25, 25, 50], "180 is high in 70–140")
+        // 62 and 69 low, 70 and 180 in range, 181 high.
+        let readings = [62.0, 69, 70, 180, 181].enumerated().map { reading(minutesAgo: Double(20 - 5 * $0.offset), $0.element) }
+        #expect(percentages(readings) == [40, 40, 20])
+        #expect(percentages(readings, .extended) == [20, 60, 20], "69 is in range from 63")
+        #expect(percentages([reading(minutesAgo: 0, 63)], .extended) == [0, 100, 0], "63 itself is in range")
     }
 
     @Test("Time in range adds up to 100: the largest takes the rounding") func timeInRangeRounding() {
@@ -398,10 +399,9 @@ import Testing
         #expect(percentages(three)?.sorted() == [33, 33, 34])
     }
 
-    @Test("Under an hour of readings, no time in range") func timeInRangeTooShort() {
-        #expect(percentages(series(every: 5, for: 55)) == nil)
+    @Test("One reading is enough, as just after midnight in Trio; none gives no time in range") func timeInRangeFirstReading() {
+        #expect(percentages([reading(minutesAgo: 0, 200)]) == [0, 0, 100])
         #expect(percentages([]) == nil)
-        #expect(percentages(series(every: 5, for: 60)) == [0, 100, 0])
     }
 
     @Test("Time in range covers the period, beyond the 3 h the watch shows; off sends none") func timeInRangeSent() throws {
@@ -464,7 +464,7 @@ import Testing
         settings.glucoseColorScheme = .dynamicColor
         settings.isWatchfaceDataEnabled = false
         settings.timeInRangePeriod = .past24Hours
-        settings.timeInRangeTarget = .tight
+        settings.timeInRangeTarget = .extended
         manager.settings = settings
 
         let restored = try #require(GarminSmartwatchManager(rawState: manager.rawState))
@@ -481,6 +481,15 @@ import Testing
         #expect(settings.glucoseColorScheme == .dynamicColor)
         #expect(settings.isWatchfaceDataEnabled == false)
         #expect(settings.timeInRangePeriod == .today)
+        #expect(settings.timeInRangeTarget == .standard)
+    }
+
+    @Test("A saved choice that no longer exists takes its default; the others keep theirs") func settingsUnknownValue() throws {
+        // "tight" (70–140) was a range choice in test builds before Extended replaced it.
+        let saved = Data(#"{"watchface":"swissalpine","timeInRangePeriod":"past24Hours","timeInRangeTarget":"tight"}"#.utf8)
+        let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
+        #expect(settings.watchface == .swissalpine)
+        #expect(settings.timeInRangePeriod == .past24Hours)
         #expect(settings.timeInRangeTarget == .standard)
     }
 

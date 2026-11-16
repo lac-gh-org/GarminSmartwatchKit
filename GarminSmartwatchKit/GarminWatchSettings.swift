@@ -85,33 +85,34 @@ public enum GarminTimeInRangePeriod: String, CaseIterable, Identifiable, Codable
     }
 }
 
-/// The glucose range the watch's time in range counts as in range: the consensus
-/// range or Trio's tight range, as on Trio's Statistics screen.
+/// The glucose range the watch's time in range counts as in range, as Trio's home
+/// stats panel: a lower limit of 70 (Standard) or 63 (Extended) mg/dL, Trio's
+/// `TimeInRangeType.bottomThreshold`, up to a fixed 180.
 public enum GarminTimeInRangeTarget: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     public var id: String { rawValue }
 
     case standard
-    case tight
+    case extended
 
     /// In mg/dL, both ends in range.
     public var bounds: ClosedRange<Double> {
         switch self {
         case .standard: return 70 ... 180
-        case .tight: return 70 ... 140
+        case .extended: return 63 ... 180
         }
     }
 
-    /// "70–180 mg/dL", or "3.9–10.0 mmol/L" for a host that shows mmol/L.
+    /// "Standard (70–180 mg/dL)", or with "3.9–10.0 mmol/L" for a host that shows mmol/L.
     public func displayName(isMillimolesPerLiter: Bool) -> String {
         if isMillimolesPerLiter {
             switch self {
-            case .standard: return LocalizedString("3.9–10.0 mmol/L", comment: "Garmin time in range: 70–180 mg/dL in mmol/L")
-            case .tight: return LocalizedString("3.9–7.8 mmol/L", comment: "Garmin time in range: 70–140 mg/dL in mmol/L")
+            case .standard: return LocalizedString("Standard (3.9–10.0 mmol/L)", comment: "Garmin time in range: 70–180 mg/dL in mmol/L")
+            case .extended: return LocalizedString("Extended (3.5–10.0 mmol/L)", comment: "Garmin time in range: 63–180 mg/dL in mmol/L")
             }
         }
         switch self {
-        case .standard: return LocalizedString("70–180 mg/dL", comment: "Garmin time in range: the consensus range")
-        case .tight: return LocalizedString("70–140 mg/dL", comment: "Garmin time in range: the tight range")
+        case .standard: return LocalizedString("Standard (70–180 mg/dL)", comment: "Garmin time in range: Trio's standard lower limit")
+        case .extended: return LocalizedString("Extended (63–180 mg/dL)", comment: "Garmin time in range: Trio's extended lower limit")
         }
     }
 }
@@ -219,22 +220,23 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
 
     public init() {}
 
-    /// Each setting missing from what was saved (one added since) takes its
-    /// default, rather than all of them going back to theirs.
+    /// Each setting missing from what was saved (one added since) or no longer
+    /// known (a choice removed since) takes its default, rather than all of them
+    /// going back to theirs.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        func value<T: Decodable>(_ key: CodingKeys, or fallback: T) -> T {
+            ((try? container.decodeIfPresent(T.self, forKey: key)) ?? nil) ?? fallback
+        }
         let defaults = GarminWatchSettings()
-        watchface = try container.decodeIfPresent(GarminWatchface.self, forKey: .watchface) ?? defaults.watchface
-        datafield = try container.decodeIfPresent(GarminDatafield.self, forKey: .datafield) ?? defaults.datafield
-        primaryAttributeChoice = try container.decodeIfPresent(GarminPrimaryAttributeChoice.self, forKey: .primaryAttributeChoice)
-            ?? defaults.primaryAttributeChoice
-        secondaryAttributeChoice = try container.decodeIfPresent(GarminSecondaryAttributeChoice.self, forKey: .secondaryAttributeChoice)
-            ?? defaults.secondaryAttributeChoice
-        glucoseColorScheme = try container.decodeIfPresent(GarminGlucoseColorScheme.self, forKey: .glucoseColorScheme)
-            ?? defaults.glucoseColorScheme
-        isWatchfaceDataEnabled = try container.decodeIfPresent(Bool.self, forKey: .isWatchfaceDataEnabled) ?? defaults.isWatchfaceDataEnabled
-        timeInRangePeriod = try container.decodeIfPresent(GarminTimeInRangePeriod.self, forKey: .timeInRangePeriod) ?? defaults.timeInRangePeriod
-        timeInRangeTarget = try container.decodeIfPresent(GarminTimeInRangeTarget.self, forKey: .timeInRangeTarget) ?? defaults.timeInRangeTarget
+        watchface = value(.watchface, or: defaults.watchface)
+        datafield = value(.datafield, or: defaults.datafield)
+        primaryAttributeChoice = value(.primaryAttributeChoice, or: defaults.primaryAttributeChoice)
+        secondaryAttributeChoice = value(.secondaryAttributeChoice, or: defaults.secondaryAttributeChoice)
+        glucoseColorScheme = value(.glucoseColorScheme, or: defaults.glucoseColorScheme)
+        isWatchfaceDataEnabled = value(.isWatchfaceDataEnabled, or: defaults.isWatchfaceDataEnabled)
+        timeInRangePeriod = value(.timeInRangePeriod, or: defaults.timeInRangePeriod)
+        timeInRangeTarget = value(.timeInRangeTarget, or: defaults.timeInRangeTarget)
     }
 
     private enum CodingKeys: String, CodingKey {

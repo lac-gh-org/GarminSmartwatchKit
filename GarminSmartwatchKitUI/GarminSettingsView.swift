@@ -216,7 +216,7 @@ struct GarminSettingsView: View {
         } header: {
             Text(LocalizedString("Display", comment: "Garmin settings: display section"))
         } footer: {
-            Text(LocalizedString("Time in Range is shown by WatchAID, once there's an hour of readings.", comment: "Garmin settings: time in range footer"))
+            Text(LocalizedString("Time in Range is shown by WatchAID, counted as on Trio's home screen.", comment: "Garmin settings: time in range footer"))
         }
     }
 }
