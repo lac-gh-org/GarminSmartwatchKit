@@ -377,6 +377,71 @@ import Testing
         #expect(first?.isf == nil)
     }
 
+    private func percentages(_ readings: [StoredGlucoseSample], _ target: GarminTimeInRangeTarget = .standard) -> [Int]? {
+        GarminWatchState.timeInRange(readings, bounds: target.bounds).map { [$0.low, $0.inRange, $0.high] }
+    }
+
+    @Test("Time in range counts readings, both ends of the range in range") func timeInRangeBounds() {
+        // 69 low, 70 and 180 in range, 181 high, over an hour.
+        let readings = [reading(minutesAgo: 60, 69), reading(minutesAgo: 40, 70), reading(minutesAgo: 20, 180), reading(minutesAgo: 0, 181)]
+        #expect(percentages(readings) == [25, 50, 25])
+        #expect(percentages(readings, .tight) == [25, 25, 50], "180 is high in 70–140")
+    }
+
+    @Test("Time in range adds up to 100: the largest takes the rounding") func timeInRangeRounding() {
+        // 1 of 8 is 12.5%, rounded up twice: 13 + 75 + 13 = 101.
+        let eight = [reading(minutesAgo: 70, 60), reading(minutesAgo: 60, 200)] + series(every: 10, for: 50)
+        #expect(percentages(eight) == [13, 74, 13])
+        // A third each rounds down: 99.
+        let three = [reading(minutesAgo: 60, 60), reading(minutesAgo: 30, 100), reading(minutesAgo: 0, 200)]
+        #expect(percentages(three)?.reduce(0, +) == 100)
+        #expect(percentages(three)?.sorted() == [33, 33, 34])
+    }
+
+    @Test("Under an hour of readings, no time in range") func timeInRangeTooShort() {
+        #expect(percentages(series(every: 5, for: 55)) == nil)
+        #expect(percentages([]) == nil)
+        #expect(percentages(series(every: 5, for: 60)) == [0, 100, 0])
+    }
+
+    @Test("Time in range covers the period, beyond the 3 h the watch shows; off sends none") func timeInRangeSent() throws {
+        // 23 h and 20 h ago: one low, one high; the last hour in range.
+        let history = [reading(minutesAgo: 23 * 60, 60), reading(minutesAgo: 20 * 60, 250)] + series(every: 5, for: 60)
+        var withTIR = withHistory
+        withTIR.timeInRangePeriod = .past24Hours
+        let states = GarminWatchState.states(from: hostData(history: history), options: withTIR, now: now)
+        // 1 and 1 of 15 are 7% each; 87 + 7 + 7 = 101.
+        #expect([states[0].tirLow, states[0].tirInRange, states[0].tirHigh] == [7, 86, 7])
+        #expect(states.count == 13, "the readings sent still reach back only 3 h")
+        #expect(states.dropFirst().allSatisfy { $0.tirLow == nil && $0.tirInRange == nil && $0.tirHigh == nil })
+
+        let json = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(states[0])) as? [String: Any])
+        #expect(json["tirLow"] as? Int == 7)
+        #expect(json["tirInRange"] as? Int == 86)
+        #expect(json["tirHigh"] as? Int == 7)
+
+        let off = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
+        #expect(off[0].tirLow == nil && off[0].tirInRange == nil && off[0].tirHigh == nil)
+        #expect(off.dropFirst() == states.dropFirst())
+    }
+
+    @Test("No reading in the last 3 h: nothing sent, even with a day of older ones") func timeInRangeOnlyOldReadings() {
+        var withTIR = options
+        withTIR.timeInRangePeriod = .past24Hours
+        let old = [reading(minutesAgo: 10 * 60, 100), reading(minutesAgo: 4 * 60, 100)]
+        #expect(GarminWatchState.states(from: hostData(history: old), options: withTIR, now: now).isEmpty)
+    }
+
+    @Test("Today starts at midnight in the phone's time zone; the read reaches back to the earlier start") func timeInRangePeriods() {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        // 1_800_000_000 is 08:00 UTC.
+        #expect(GarminTimeInRangePeriod.today.start(now: now, calendar: utc) == now.addingTimeInterval(-8 * 60 * 60))
+        #expect(GarminTimeInRangePeriod.past24Hours.start(now: now, calendar: utc) == now.addingTimeInterval(-24 * 60 * 60))
+        #expect(GarminTimeInRangePeriod.off.start(now: now, calendar: utc) == nil)
+        #expect(GarminHostData.readingsStart(now: now, calendar: utc) == now.addingTimeInterval(-24 * 60 * 60))
+    }
+
     @Test("Trends map to Nightscout directions; small IOB stays visible") func directionsAndIOB() {
         #expect(GlucoseTrend.allCases.map(GarminWatchState.direction) == [
             "DoubleUp", "SingleUp", "FortyFiveUp", "Flat", "FortyFiveDown", "SingleDown", "DoubleDown"
@@ -398,11 +463,25 @@ import Testing
         settings.secondaryAttributeChoice = .eventualBG
         settings.glucoseColorScheme = .dynamicColor
         settings.isWatchfaceDataEnabled = false
+        settings.timeInRangePeriod = .past24Hours
+        settings.timeInRangeTarget = .tight
         manager.settings = settings
 
         let restored = try #require(GarminSmartwatchManager(rawState: manager.rawState))
         #expect(restored.settings == settings)
         #expect(restored.devices.isEmpty)
+    }
+
+    @Test("Settings saved before a setting was added keep their values; the new one takes its default") func settingsMissingKeys() throws {
+        let saved = Data(#"{"watchface":"swissalpine","datafield":"none","primaryAttributeChoice":"isf","secondaryAttributeChoice":"eventualBG","glucoseColorScheme":"dynamic","isWatchfaceDataEnabled":false}"#.utf8)
+        let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
+        #expect(settings.watchface == .swissalpine)
+        #expect(settings.datafield == GarminDatafield.none)
+        #expect(settings.primaryAttributeChoice == .isf)
+        #expect(settings.glucoseColorScheme == .dynamicColor)
+        #expect(settings.isWatchfaceDataEnabled == false)
+        #expect(settings.timeInRangePeriod == .today)
+        #expect(settings.timeInRangeTarget == .standard)
     }
 
     @Test("Saved devices come back") func devices() throws {
