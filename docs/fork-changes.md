@@ -25,7 +25,8 @@ This file is for the fork only: leave it out of upstream PRs.
    because nothing in the delegate exposes the host's look; raise this with dabear
    (his rule: no functionality from the host name when the delegate exposes it).
 4. **Time in range** (2026-11-15, matched to Trio's home stats panel 2026-11-16):
-   settings Time in Range (Today, the default as in Trio / Past 24 Hours / Off) and
+   a Time in Range settings section: Show on Watch (on by default, as Trio's home
+   panel), then Period (Today, the default as in Trio / Past 24 Hours) and
    Range (Standard 70–180, default / Extended 63–180 mg/dL, Trio's
    `TimeInRangeType`); `tirLow`, `tirInRange`, `tirHigh` in the first entry, whole
    percent adding up to 100, from the first reading of the period on.

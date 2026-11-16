@@ -65,22 +65,19 @@ public enum GarminTimeInRangePeriod: String, CaseIterable, Identifiable, Codable
     /// Since midnight in the phone's time zone.
     case today
     case past24Hours
-    case off
 
     public var displayName: String {
         switch self {
         case .past24Hours: return LocalizedString("Past 24 Hours", comment: "Garmin time in range: the past 24 hours")
         case .today: return LocalizedString("Today", comment: "Garmin time in range: since midnight")
-        case .off: return LocalizedString("Off", comment: "Garmin time in range: not sent")
         }
     }
 
-    /// The oldest reading counted; `nil` when off.
-    public func start(now: Date, calendar: Calendar = .current) -> Date? {
+    /// The oldest reading counted.
+    public func start(now: Date, calendar: Calendar = .current) -> Date {
         switch self {
         case .past24Hours: return now.addingTimeInterval(-24 * 60 * 60)
         case .today: return calendar.startOfDay(for: now)
-        case .off: return nil
         }
     }
 }
@@ -214,6 +211,8 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
     public var glucoseColorScheme: GarminGlucoseColorScheme = .staticColor
     /// Off while the user switches watchfaces on the watch, or uses only a datafield.
     public var isWatchfaceDataEnabled: Bool = true
+    /// On by default, as Trio's home stats panel shows time in range by default.
+    public var isTimeInRangeEnabled: Bool = true
     /// Today by default, as Trio's home stats panel.
     public var timeInRangePeriod: GarminTimeInRangePeriod = .today
     public var timeInRangeTarget: GarminTimeInRangeTarget = .standard
@@ -235,6 +234,9 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
         secondaryAttributeChoice = value(.secondaryAttributeChoice, or: defaults.secondaryAttributeChoice)
         glucoseColorScheme = value(.glucoseColorScheme, or: defaults.glucoseColorScheme)
         isWatchfaceDataEnabled = value(.isWatchfaceDataEnabled, or: defaults.isWatchfaceDataEnabled)
+        // Test builds had "off" as a period before the switch: keep it off.
+        let wasPeriodOff = value(.timeInRangePeriod, or: "") == "off"
+        isTimeInRangeEnabled = value(.isTimeInRangeEnabled, or: !wasPeriodOff && defaults.isTimeInRangeEnabled)
         timeInRangePeriod = value(.timeInRangePeriod, or: defaults.timeInRangePeriod)
         timeInRangeTarget = value(.timeInRangeTarget, or: defaults.timeInRangeTarget)
     }
@@ -246,6 +248,7 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
         case secondaryAttributeChoice
         case glucoseColorScheme
         case isWatchfaceDataEnabled
+        case isTimeInRangeEnabled
         case timeInRangePeriod
         case timeInRangeTarget
     }

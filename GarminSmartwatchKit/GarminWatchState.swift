@@ -255,7 +255,7 @@ public struct GarminHostData {
     /// whichever is chosen, so changing the setting needs no new read. Today can
     /// reach back 25 hours, on the day the clocks go back.
     public static func readingsStart(now: Date = Date(), calendar: Calendar = .current) -> Date {
-        GarminTimeInRangePeriod.allCases.compactMap { $0.start(now: now, calendar: calendar) }
+        GarminTimeInRangePeriod.allCases.map { $0.start(now: now, calendar: calendar) }
             .reduce(now.addingTimeInterval(-historyInterval), min)
     }
 }
@@ -277,8 +277,8 @@ public extension GarminWatchState {
         public var historySpacing: TimeInterval
         /// The host app's name for the watch to show (`GarminSmartwatchManager.hostName`).
         public var hostName: String?
-        /// Which readings the time in range counts; off sends none.
-        public var timeInRangePeriod: GarminTimeInRangePeriod
+        /// Which readings the time in range counts; `nil` (off) sends none.
+        public var timeInRangePeriod: GarminTimeInRangePeriod?
         /// The range the time in range counts as in range.
         public var timeInRangeTarget: GarminTimeInRangeTarget
 
@@ -289,7 +289,7 @@ public extension GarminWatchState {
             historySpan: TimeInterval,
             historySpacing: TimeInterval,
             hostName: String? = nil,
-            timeInRangePeriod: GarminTimeInRangePeriod = .off,
+            timeInRangePeriod: GarminTimeInRangePeriod? = nil,
             timeInRangeTarget: GarminTimeInRangeTarget = .standard
         ) {
             self.primaryAttributeChoice = primaryAttributeChoice
@@ -358,7 +358,7 @@ public extension GarminWatchState {
             first.forecastHigh = cone.map(\.high)
         }
 
-        if let start = options.timeInRangePeriod.start(now: now),
+        if let start = options.timeInRangePeriod?.start(now: now),
            let percentages = timeInRange(allReadings.filter { $0.startDate >= start }, bounds: options.timeInRangeTarget.bounds)
         {
             first.tirLow = percentages.low

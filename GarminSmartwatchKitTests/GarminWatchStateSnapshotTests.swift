@@ -438,7 +438,6 @@ import Testing
         // 1_800_000_000 is 08:00 UTC.
         #expect(GarminTimeInRangePeriod.today.start(now: now, calendar: utc) == now.addingTimeInterval(-8 * 60 * 60))
         #expect(GarminTimeInRangePeriod.past24Hours.start(now: now, calendar: utc) == now.addingTimeInterval(-24 * 60 * 60))
-        #expect(GarminTimeInRangePeriod.off.start(now: now, calendar: utc) == nil)
         #expect(GarminHostData.readingsStart(now: now, calendar: utc) == now.addingTimeInterval(-24 * 60 * 60))
     }
 
@@ -463,6 +462,7 @@ import Testing
         settings.secondaryAttributeChoice = .eventualBG
         settings.glucoseColorScheme = .dynamicColor
         settings.isWatchfaceDataEnabled = false
+        settings.isTimeInRangeEnabled = false
         settings.timeInRangePeriod = .past24Hours
         settings.timeInRangeTarget = .extended
         manager.settings = settings
@@ -480,6 +480,7 @@ import Testing
         #expect(settings.primaryAttributeChoice == .isf)
         #expect(settings.glucoseColorScheme == .dynamicColor)
         #expect(settings.isWatchfaceDataEnabled == false)
+        #expect(settings.isTimeInRangeEnabled)
         #expect(settings.timeInRangePeriod == .today)
         #expect(settings.timeInRangeTarget == .standard)
     }
@@ -491,6 +492,15 @@ import Testing
         #expect(settings.watchface == .swissalpine)
         #expect(settings.timeInRangePeriod == .past24Hours)
         #expect(settings.timeInRangeTarget == .standard)
+    }
+
+    @Test("Off saved as a period, before the switch, comes back switched off") func settingsPeriodOff() throws {
+        let saved = Data(#"{"watchface":"swissalpine","timeInRangePeriod":"off","timeInRangeTarget":"extended"}"#.utf8)
+        let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
+        #expect(settings.isTimeInRangeEnabled == false)
+        #expect(settings.timeInRangePeriod == .today)
+        #expect(settings.timeInRangeTarget == .extended)
+        #expect(settings.watchface == .swissalpine)
     }
 
     @Test("Saved devices come back") func devices() throws {
