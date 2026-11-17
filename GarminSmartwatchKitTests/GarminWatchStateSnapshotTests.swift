@@ -353,6 +353,34 @@ import Testing
         #expect(GarminWatchState.hostReadings(copy, hostIdentifier: loop).map(\.provenanceIdentifier) == [loop])
     }
 
+    @Test("Another app's readings fill the host's gaps; only copies of the host's own are left out") func otherReadingsInGaps() {
+        // Loop's CGM heard nothing from 60 to 20 minutes ago (not running after an
+        // update, say); Trio's copies from Health cover the whole hour.
+        let own = [80.0, 60, 15, 10, 5, 0].map { reading(from: loop, minutesAgo: $0, 150, .flat) }
+        let trios = stride(from: 80.0, through: 0, by: -5).map { reading(from: trio, minutesAgo: $0 - 0.005, 150, nil) }
+        let readings = GarminWatchState.hostReadings(own + trios, hostIdentifier: loop)
+        // Trio's in Loop's gap are kept (to the nearest minute); those at Loop's own
+        // times are copies, left out.
+        let kept = readings.filter { $0.provenanceIdentifier == trio }
+            .map { Int((-$0.startDate.timeIntervalSince(now) / 60).rounded()) }.sorted()
+        #expect(kept == [20, 25, 30, 35, 40, 45, 50, 55, 65, 70, 75])
+        #expect(readings.filter { $0.provenanceIdentifier == loop }.count == own.count)
+    }
+
+    @Test("A day's time in range counts Trio's readings where Loop had none") func timeInRangeWithGaps() {
+        // Loop's own readings only for the last hour, all in range; Trio's copies for
+        // the whole day, high before that: as on a day of Loop TestFlight updates.
+        let own = stride(from: 60.0, through: 0, by: -5).map { reading(from: loop, minutesAgo: $0, 120, .flat) }
+        let trios = stride(from: 300.0, through: 0, by: -5).map { minutes in
+            reading(from: trio, minutesAgo: minutes - 0.005, minutes > 60 ? 220 : 120, nil)
+        }
+        var withTIR = options
+        withTIR.timeInRangePeriod = .past24Hours
+        let first = GarminWatchState.states(from: hostData(history: own + trios), options: withTIR, now: now, hostIdentifier: loop)[0]
+        // 13 in range (Loop's last hour), 48 high (Trio's 300 down to 65 minutes ago).
+        #expect([first.tirLow, first.tirInRange, first.tirHigh] == [0, 21, 79])
+    }
+
     @Test("Readings that aren't the host's own are all kept: Trio's, and Loop's from Health only") func noOwnReadings() {
         let history = [reading(from: trio, minutesAgo: 5, 155, .flat), reading(from: trio, minutesAgo: 0, 150, .flat)]
         #expect(GarminWatchState.hostReadings(history, hostIdentifier: loop) == history)

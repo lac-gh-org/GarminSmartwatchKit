@@ -15,6 +15,14 @@ This file is for the fork only: leave it out of upstream PRs.
 
 ## Still to PR, in a sensible order
 
+0. **Other apps' readings fill the host's gaps** (2026-11-16): a fix to PR #3's
+   own-readings filter, so goes first, on its own. It dropped every other app's
+   reading older than the host's newest own one, so hours where Loop heard no CGM
+   (not running after an update) vanished: a day's time in range on Loop showed
+   ~98% in range where Trio, on the same sensor, showed 70.5%. Now only copies
+   (within 2 min of an own reading) are left out. The newest readings, the delta
+   and arrow are as before.
+
 1. **WatchAID entry** (6c9a494): the sideloaded watch app as a watchface choice,
    the host's full 3 h at 5-minute spacing, and a sideload note in the settings.
    Wants the watch app public, or at least linked, first.

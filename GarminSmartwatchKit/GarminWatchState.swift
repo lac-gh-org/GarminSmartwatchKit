@@ -380,21 +380,38 @@ public extension GarminWatchState {
     /// it), so the two copies differ by a fraction of a second, either way.
     static let sameReadingTolerance: TimeInterval = 2 * 60
 
-    /// The host's own readings, and other apps' only after its newest own one. Its
-    /// own are those stamped with the app the plugin runs in, as LoopKit stamps its
-    /// CGM's (`HKSource.default()`). Loop also takes in every other app's glucose
-    /// from Apple Health, Trio's for one: the same reading again, within a second
-    /// and without a trend, which gave a delta of 0 and no arrow. Readings more than
-    /// `sameReadingTolerance` newer still count, so the watch follows Loop when its
-    /// CGM stops and another app's readings carry on. A host whose readings don't
-    /// carry its identifier (Trio's), or that has only other apps' readings (Loop
-    /// with glucose from Health), keeps them all.
+    /// The host's own readings, and other apps' except copies of its own. Its own are
+    /// those stamped with the app the plugin runs in, as LoopKit stamps its CGM's
+    /// (`HKSource.default()`). Loop also takes in every other app's glucose from
+    /// Apple Health, Trio's for one: the same reading again, within a second and
+    /// without a trend, which gave a delta of 0 and no arrow. So another app's
+    /// reading within `sameReadingTolerance` of one of the host's own is left out.
+    /// The rest still count: those after the host's newest, so the watch follows
+    /// Loop when its CGM stops and another app's readings carry on, and those in the
+    /// host's gaps (Loop not running after an update, say), which a day's time in
+    /// range needs. A host whose readings don't carry its identifier (Trio's), or
+    /// that has only other apps' readings (Loop with glucose from Health), keeps
+    /// them all.
     static func hostReadings(_ samples: [StoredGlucoseSample], hostIdentifier: String?) -> [StoredGlucoseSample] {
-        guard let hostIdentifier,
-              let newestOwn = samples.filter({ $0.provenanceIdentifier == hostIdentifier }).map(\.startDate).max()
-        else { return samples }
-        let othersAfter = newestOwn.addingTimeInterval(sameReadingTolerance)
-        return samples.filter { $0.provenanceIdentifier == hostIdentifier || $0.startDate > othersAfter }
+        guard let hostIdentifier else { return samples }
+        let ownDates = samples.filter { $0.provenanceIdentifier == hostIdentifier }.map(\.startDate).sorted()
+        guard !ownDates.isEmpty else { return samples }
+        return samples.filter { sample in
+            sample.provenanceIdentifier == hostIdentifier || !hasReading(near: sample.startDate, in: ownDates)
+        }
+    }
+
+    /// Whether `sortedDates` holds one within `sameReadingTolerance` of `date`.
+    private static func hasReading(near date: Date, in sortedDates: [Date]) -> Bool {
+        // The first date not before date - tolerance, by binary search.
+        var low = 0
+        var high = sortedDates.count
+        let earliest = date.addingTimeInterval(-sameReadingTolerance)
+        while low < high {
+            let middle = (low + high) / 2
+            if sortedDates[middle] < earliest { low = middle + 1 } else { high = middle }
+        }
+        return low < sortedDates.count && sortedDates[low] <= date.addingTimeInterval(sameReadingTolerance)
     }
 
     /// The readings after the newest to send, newest first: those less than
