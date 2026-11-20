@@ -501,34 +501,50 @@ import Testing
     }
 
     @Test("Settings saved before a setting was added keep their values; the new one takes its default") func settingsMissingKeys() throws {
-        let saved = Data(#"{"watchface":"swissalpine","datafield":"none","primaryAttributeChoice":"isf","secondaryAttributeChoice":"eventualBG","glucoseColorScheme":"dynamic","isWatchfaceDataEnabled":false}"#.utf8)
+        // As saved by a version without Glucose Colors, Send to Watchface or time in range.
+        let saved = Data(#"{"watchface":"swissalpine","datafield":"none","primaryAttributeChoice":"isf","secondaryAttributeChoice":"eventualBG"}"#.utf8)
         let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
         #expect(settings.watchface == .swissalpine)
         #expect(settings.datafield == GarminDatafield.none)
         #expect(settings.primaryAttributeChoice == .isf)
-        #expect(settings.glucoseColorScheme == .dynamicColor)
-        #expect(settings.isWatchfaceDataEnabled == false)
+        #expect(settings.secondaryAttributeChoice == .eventualBG)
+        #expect(settings.glucoseColorScheme == .staticColor)
+        #expect(settings.isWatchfaceDataEnabled)
         #expect(settings.isTimeInRangeEnabled)
         #expect(settings.timeInRangePeriod == .today)
         #expect(settings.timeInRangeTarget == .standard)
     }
 
     @Test("A saved choice that no longer exists takes its default; the others keep theirs") func settingsUnknownValue() throws {
-        // "tight" (70–140) was a range choice in test builds before Extended replaced it.
-        let saved = Data(#"{"watchface":"swissalpine","timeInRangePeriod":"past24Hours","timeInRangeTarget":"tight"}"#.utf8)
+        let saved = Data(#"{"watchface":"retired","datafield":"swissalpine","glucoseColorScheme":"dynamic","isWatchfaceDataEnabled":false}"#.utf8)
         let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
-        #expect(settings.watchface == .swissalpine)
-        #expect(settings.timeInRangePeriod == .past24Hours)
-        #expect(settings.timeInRangeTarget == .standard)
+        #expect(settings.watchface == .trio)
+        #expect(settings.datafield == .swissalpine)
+        #expect(settings.glucoseColorScheme == .dynamicColor)
+        #expect(settings.isWatchfaceDataEnabled == false)
     }
 
-    @Test("Off saved as a period, before the switch, comes back switched off") func settingsPeriodOff() throws {
-        let saved = Data(#"{"watchface":"swissalpine","timeInRangePeriod":"off","timeInRangeTarget":"extended"}"#.utf8)
-        let settings = try JSONDecoder().decode(GarminWatchSettings.self, from: saved)
-        #expect(settings.isTimeInRangeEnabled == false)
-        #expect(settings.timeInRangePeriod == .today)
-        #expect(settings.timeInRangeTarget == .extended)
-        #expect(settings.watchface == .swissalpine)
+    @Test("Each watch app reads only its own part of the payload; the settings count the chosen watchface and datafield") func payloadContent() {
+        for watchface in GarminWatchface.allCases where watchface != .watchAID {
+            #expect(watchface.payloadContent == [.attributes, .colorScheme])
+        }
+        #expect(GarminWatchface.watchAID.payloadContent == [.colorScheme, .forecast, .timeInRange])
+        #expect(GarminDatafield.trio.payloadContent == .attributes)
+        #expect(GarminDatafield.swissalpine.payloadContent == .attributes)
+        #expect(GarminDatafield.none.payloadContent.isEmpty)
+
+        var settings = GarminWatchSettings()
+        settings.watchface = .complication
+        settings.datafield = .none
+        #expect(settings.payloadContent == [.attributes, .colorScheme])
+        // Send to Watchface off only while switching: the watchface still counts.
+        settings.isWatchfaceDataEnabled = false
+        #expect(settings.payloadContent == [.attributes, .colorScheme])
+        // Only WatchAID reads the forecast and the time in range.
+        #expect(settings.payloadContent.isDisjoint(with: [.forecast, .timeInRange]))
+        settings.watchface = .watchAID
+        settings.datafield = .swissalpine
+        #expect(settings.payloadContent == .all)
     }
 
     @Test("Saved devices come back") func devices() throws {

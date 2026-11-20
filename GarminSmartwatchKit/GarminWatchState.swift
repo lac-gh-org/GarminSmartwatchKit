@@ -381,17 +381,12 @@ public extension GarminWatchState {
     static let sameReadingTolerance: TimeInterval = 2 * 60
 
     /// The host's own readings, and other apps' except copies of its own. Its own are
-    /// those stamped with the app the plugin runs in, as LoopKit stamps its CGM's
-    /// (`HKSource.default()`). Loop also takes in every other app's glucose from
-    /// Apple Health, Trio's for one: the same reading again, within a second and
-    /// without a trend, which gave a delta of 0 and no arrow. So another app's
-    /// reading within `sameReadingTolerance` of one of the host's own is left out.
-    /// The rest still count: those after the host's newest, so the watch follows
-    /// Loop when its CGM stops and another app's readings carry on, and those in the
-    /// host's gaps (Loop not running after an update, say), which a day's time in
-    /// range needs. A host whose readings don't carry its identifier (Trio's), or
-    /// that has only other apps' readings (Loop with glucose from Health), keeps
-    /// them all.
+    /// stamped with the host app (`HKSource.default()`, as LoopKit stamps its CGM's).
+    /// Loop also reads other apps' glucose from Apple Health (Trio's, say), so a
+    /// reading can come twice: another app's within `sameReadingTolerance` of one of
+    /// the host's own is left out. Its others still count, after the host's newest
+    /// (Loop's CGM stopped) and in the host's gaps (Loop not running). A host with no
+    /// readings of its own, or whose readings aren't stamped (Trio's), keeps them all.
     static func hostReadings(_ samples: [StoredGlucoseSample], hostIdentifier: String?) -> [StoredGlucoseSample] {
         guard let hostIdentifier else { return samples }
         let ownDates = samples.filter { $0.provenanceIdentifier == hostIdentifier }.map(\.startDate).sorted()
@@ -526,5 +521,32 @@ public extension GarminWatchState {
     private static func mgdL(_ value: Double) -> Int16? {
         guard value.isFinite, abs(value) <= Double(Int16.max) else { return nil }
         return Int16(value.rounded())
+    }
+}
+
+// MARK: - Payload per watch app
+
+extension GarminWatchState {
+    /// The keys of the optional parts of the payload, all on the first entry.
+    static func keys(for content: GarminPayloadContent) -> Set<String> {
+        var keys: [CodingKeys] = []
+        if content.contains(.attributes) {
+            keys += [.displayPrimaryAttributeChoice, .displaySecondaryAttributeChoice]
+        }
+        if content.contains(.colorScheme) { keys.append(.glucoseColorScheme) }
+        if content.contains(.forecast) { keys += [.forecastDate, .forecastLow, .forecastHigh] }
+        if content.contains(.timeInRange) { keys += [.tirLow, .tirInRange, .tirHigh] }
+        return Set(keys.map(\.rawValue))
+    }
+
+    /// The payload as a watch app that reads `content` gets it: the optional parts
+    /// it doesn't read are left out, so it gets no more than it uses.
+    static func payload(_ payload: Any, for content: GarminPayloadContent) -> Any {
+        guard var states = payload as? [[String: Any]], var first = states.first else { return payload }
+        for key in keys(for: GarminPayloadContent.all.subtracting(content)) {
+            first.removeValue(forKey: key)
+        }
+        states[0] = first
+        return states
     }
 }

@@ -116,6 +116,25 @@ public enum GarminTimeInRangeTarget: String, CaseIterable, Identifiable, Codable
 
 // MARK: - Watch apps
 
+/// The optional parts of the payload a watch app reads. Each app gets only those it
+/// reads, and the settings show only those the chosen apps read. Glucose, trend,
+/// IOB, COB, basal and the other values every app shows always go.
+public struct GarminPayloadContent: OptionSet, Hashable, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+
+    /// The Primary and Secondary Value choices.
+    public static let attributes = GarminPayloadContent(rawValue: 1 << 0)
+    /// The Glucose Colors choice.
+    public static let colorScheme = GarminPayloadContent(rawValue: 1 << 1)
+    /// The forecast cone.
+    public static let forecast = GarminPayloadContent(rawValue: 1 << 2)
+    /// The time in range.
+    public static let timeInRange = GarminPayloadContent(rawValue: 1 << 3)
+
+    public static let all: GarminPayloadContent = [.attributes, .colorScheme, .forecast, .timeInRange]
+}
+
 /// The Connect IQ watch apps that take the watchface slot.
 public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     public var id: String { rawValue }
@@ -149,11 +168,22 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         }
     }
 
+    /// What the watch app reads beyond the values every app shows. Trio's help text
+    /// has both watchfaces show the Primary and Secondary Value; the Complication
+    /// app reads both and Glucose Colors. WatchAID shows its own values, the forecast
+    /// and the time in range.
+    public var payloadContent: GarminPayloadContent {
+        switch self {
+        case .trio, .swissalpine, .complication: return [.attributes, .colorScheme]
+        case .watchAID: return [.colorScheme, .forecast, .timeInRange]
+        }
+    }
+
     /// How far back the readings the watch app gets reach, measured from the newest
     /// reading; 0 sends the newest reading only. Time rather than a count, so it
-    /// means the same with any CGM. The plugin reads only
-    /// `GarminHostData.historyInterval` (3 h) from the host, so a longer span gets
-    /// no more than that.
+    /// means the same with any CGM. The plugin sends readings from only the last
+    /// `GarminHostData.historyInterval` (3 h), so a longer span gets no more than
+    /// that.
     public var historySpan: TimeInterval {
         switch self {
         case .trio: return 0
@@ -198,6 +228,15 @@ public enum GarminDatafield: String, CaseIterable, Identifiable, Codable, Hashab
         case .none: return nil
         }
     }
+
+    /// What the datafield reads beyond the values every app shows: both show the
+    /// Primary and Secondary Value, and neither reads Glucose Colors.
+    public var payloadContent: GarminPayloadContent {
+        switch self {
+        case .trio, .swissalpine: return .attributes
+        case .none: return []
+        }
+    }
 }
 
 // MARK: - Settings
@@ -219,6 +258,13 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
 
     public init() {}
 
+    /// What the chosen watchface and datafield read between them. The watchface
+    /// counts even while Send to Watchface is off, as that is often only while the
+    /// user switches watchfaces on the watch.
+    public var payloadContent: GarminPayloadContent {
+        watchface.payloadContent.union(datafield.payloadContent)
+    }
+
     /// Each setting missing from what was saved (one added since) or no longer
     /// known (a choice removed since) takes its default, rather than all of them
     /// going back to theirs.
@@ -234,9 +280,7 @@ public struct GarminWatchSettings: Codable, Hashable, Sendable {
         secondaryAttributeChoice = value(.secondaryAttributeChoice, or: defaults.secondaryAttributeChoice)
         glucoseColorScheme = value(.glucoseColorScheme, or: defaults.glucoseColorScheme)
         isWatchfaceDataEnabled = value(.isWatchfaceDataEnabled, or: defaults.isWatchfaceDataEnabled)
-        // Test builds had "off" as a period before the switch: keep it off.
-        let wasPeriodOff = value(.timeInRangePeriod, or: "") == "off"
-        isTimeInRangeEnabled = value(.isTimeInRangeEnabled, or: !wasPeriodOff && defaults.isTimeInRangeEnabled)
+        isTimeInRangeEnabled = value(.isTimeInRangeEnabled, or: defaults.isTimeInRangeEnabled)
         timeInRangePeriod = value(.timeInRangePeriod, or: defaults.timeInRangePeriod)
         timeInRangeTarget = value(.timeInRangeTarget, or: defaults.timeInRangeTarget)
     }
