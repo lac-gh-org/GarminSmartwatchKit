@@ -783,9 +783,14 @@ extension GarminSmartwatchManager: SmartwatchManager {
         }
     }
 
-    /// Device log only, to check the cone sent against the host's forecasts.
+    /// Device log only, to check the cone sent against the host's forecasts: only while a
+    /// registered watch app reads the forecast, so it is logged only when it is sent.
     @MainActor
     private func logForecast(_ curves: [[PredictedGlucoseValue]]) {
+        guard watchApps.contains(where: { payloadContent(for: $0).contains(.forecast) }) else {
+            loggedForecast = []
+            return
+        }
         let lines = GarminWatchState.forecastLogLines(curves)
         guard lines != loggedForecast else { return }
         loggedForecast = lines

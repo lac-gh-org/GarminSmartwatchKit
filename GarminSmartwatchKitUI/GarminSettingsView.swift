@@ -84,8 +84,13 @@ struct GarminSettingsView: View {
 
             devicesSection
             watchAppSection
-            displaySection
-            timeInRangeSection
+            // Only what the chosen watchface and datafield read.
+            if content.contains(.attributes) || showsGlucoseColors {
+                displaySection
+            }
+            if content.contains(.timeInRange) {
+                timeInRangeSection
+            }
 
             Section {
                 Button(LocalizedString("Delete Garmin", comment: "Garmin settings: remove the plugin"), role: .destructive) {
@@ -191,27 +196,57 @@ struct GarminSettingsView: View {
         GarminSmartwatchManager.hostName?.range(of: "loop", options: .caseInsensitive) != nil
     }
 
+    /// What the chosen watchface and datafield read. The watchface counts even while
+    /// Send to Watchface is off, so the settings don't vanish during a switch.
+    private var content: GarminPayloadContent { model.settings.payloadContent }
+
+    /// Glucose Colors: a chosen app reads it and the host isn't Loop.
+    private var showsGlucoseColors: Bool { content.contains(.colorScheme) && !isLoopHost }
+
+    /// Each setting shows only when a chosen app reads it; a hidden one keeps its value.
     private var displaySection: some View {
         Section {
-            Picker(LocalizedString("Primary Value", comment: "Garmin settings: primary attribute"), selection: $model.settings.primaryAttributeChoice) {
-                ForEach(GarminPrimaryAttributeChoice.allCases) { Text($0.displayName).tag($0) }
+            if content.contains(.attributes) {
+                Picker(LocalizedString("Primary Value", comment: "Garmin settings: primary attribute"), selection: $model.settings.primaryAttributeChoice) {
+                    ForEach(GarminPrimaryAttributeChoice.allCases) { Text($0.displayName).tag($0) }
+                }
+                Picker(LocalizedString("Secondary Value", comment: "Garmin settings: secondary attribute"), selection: $model.settings.secondaryAttributeChoice) {
+                    ForEach(GarminSecondaryAttributeChoice.allCases) { Text($0.displayName).tag($0) }
+                }
             }
-            Picker(LocalizedString("Secondary Value", comment: "Garmin settings: secondary attribute"), selection: $model.settings.secondaryAttributeChoice) {
-                ForEach(GarminSecondaryAttributeChoice.allCases) { Text($0.displayName).tag($0) }
-            }
-            if !isLoopHost {
+            if showsGlucoseColors {
                 Picker(LocalizedString("Glucose Colors", comment: "Garmin settings: glucose colour scheme"), selection: $model.settings.glucoseColorScheme) {
                     ForEach(GarminGlucoseColorScheme.allCases) { Text($0.displayName).tag($0) }
                 }
             }
         } header: {
             Text(LocalizedString("Display", comment: "Garmin settings: display section"))
+        } footer: {
+            if content.contains(.attributes) {
+                Text(String(
+                    format: LocalizedString("Primary and Secondary Value show on %@.", comment: "Garmin settings: display footer, the watch apps that show them"),
+                    ListFormatter.localizedString(byJoining: attributeApps)
+                ))
+            }
         }
     }
 
-    /// Its own section: one feature, its settings and its own note, and only
-    /// WatchAID shows it, unlike the display settings above. Period and Range
-    /// show only while it's on.
+    /// The chosen watchface and datafield that show the Primary and Secondary Value.
+    private var attributeApps: [String] {
+        var apps: [String] = []
+        let watchface = model.settings.watchface
+        if watchface.payloadContent.contains(.attributes) {
+            apps.append(String(format: LocalizedString("%@ (watchface)", comment: "Garmin settings: a watchface in the display footer"), watchface.displayName))
+        }
+        let datafield = model.settings.datafield
+        if datafield.payloadContent.contains(.attributes) {
+            apps.append(String(format: LocalizedString("%@ (datafield)", comment: "Garmin settings: a datafield in the display footer"), datafield.displayName))
+        }
+        return apps
+    }
+
+    /// Its own section: one feature, its settings and its own note, shown only when a
+    /// chosen app reads the time in range. Period and Range show only while it's on.
     private var timeInRangeSection: some View {
         Section {
             Toggle(LocalizedString("Show on Watch", comment: "Garmin settings: time in range on or off"), isOn: $model.settings.isTimeInRangeEnabled)
@@ -228,7 +263,7 @@ struct GarminSettingsView: View {
         } header: {
             Text(LocalizedString("Time in Range", comment: "Garmin settings: time in range section"))
         } footer: {
-            Text(LocalizedString("Shown by WatchAID: the share of glucose readings below, in and above the range.", comment: "Garmin settings: time in range footer"))
+            Text(LocalizedString("The share of glucose readings below, in and above the range.", comment: "Garmin settings: time in range footer"))
         }
     }
 }
