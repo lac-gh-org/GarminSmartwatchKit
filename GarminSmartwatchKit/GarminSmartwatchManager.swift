@@ -438,11 +438,12 @@ public final class GarminSmartwatchManager: NSObject {
     }
 
     /// The state as `app` gets it, and a stable hash of that (sorted JSON bytes), so an app is
-    /// sent again only when what it gets changes.
+    /// sent again only when what it gets changes. Hashed as a string: `Data`'s own hash covers
+    /// only its first 80 bytes, so a change further in would look unchanged.
     private func appPayload(_ state: Any, for app: IQApp) -> (payload: Any, hash: Int) {
         let payload = GarminWatchState.payload(state, for: payloadContent(for: app))
         let sorted = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        return (payload, sorted?.hashValue ?? 0)
+        return (payload, sorted?.base64EncodedString().hashValue ?? 0)
     }
 
     // MARK: - Delivery
