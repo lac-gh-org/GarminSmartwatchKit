@@ -529,6 +529,7 @@ import Testing
             #expect(watchface.payloadContent == [.attributes, .colorScheme])
         }
         #expect(GarminWatchface.watchAID.payloadContent == [.colorScheme, .forecast, .timeInRange])
+        #expect(GarminWatchface.watchAID.statusReply == .always, "WatchAID starts empty when opened")
         #expect(GarminDatafield.trio.payloadContent == .attributes)
         #expect(GarminDatafield.swissalpine.payloadContent == .attributes)
         #expect(GarminDatafield.none.payloadContent.isEmpty)

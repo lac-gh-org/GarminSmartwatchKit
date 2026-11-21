@@ -210,15 +210,18 @@ public final class GarminSmartwatchManager: NSObject {
     private var currentDatafield: GarminDatafield { settings.datafield }
     private var isWatchfaceDataEnabled: Bool { settings.isWatchfaceDataEnabled }
 
+    /// Which of the chosen watch apps `uuid` is; `nil` for an app the settings don't name.
+    /// Every question about a particular app (its name, what it reads) starts here.
+    func chosenApp(for uuid: UUID?) -> GarminChosenApp? {
+        guard let uuid else { return nil }
+        if uuid == currentWatchface.watchfaceUUID { return .watchface(currentWatchface) }
+        if uuid == currentDatafield.datafieldUUID { return .datafield(currentDatafield) }
+        return nil
+    }
+
     /// Returns the display name for an app UUID (watchface or datafield).
     private func appDisplayName(for uuid: UUID) -> String {
-        if uuid == currentWatchface.watchfaceUUID {
-            return "watchface:\(currentWatchface.displayName)"
-        } else if uuid == currentDatafield.datafieldUUID {
-            return "datafield:\(currentDatafield.displayName)"
-        } else {
-            return "unknown app"
-        }
+        chosenApp(for: uuid)?.logName ?? "unknown app"
     }
 
     /// Returns the display name including UUID, for registration and errors.
@@ -432,9 +435,7 @@ public final class GarminSmartwatchManager: NSObject {
 
     /// What the app reads; an app the settings don't name gets everything.
     func payloadContent(for app: IQApp) -> GarminPayloadContent {
-        if app.uuid == currentWatchface.watchfaceUUID { return currentWatchface.payloadContent }
-        if app.uuid == currentDatafield.datafieldUUID { return currentDatafield.payloadContent }
-        return .all
+        chosenApp(for: app.uuid)?.payloadContent ?? .all
     }
 
     /// The state as `app` gets it, and a stable hash of that (sorted JSON bytes), so an app is
@@ -736,9 +737,9 @@ extension GarminSmartwatchManager: IQUIOverrideDelegate, IQDeviceEventDelegate, 
             return
         }
 
-        // The app is asking, so answer even when nothing changed: a freshly opened
-        // watch app or glance has no data until it gets a send.
-        if let registeredKey {
+        // A watch app that starts empty gets the state even when it already confirmed it;
+        // a watchface or datafield gets only what it hasn't got (`GarminStatusReply`).
+        if let registeredKey, (chosenApp(for: appUUID)?.statusReply ?? .always) == .always {
             lastSentDataHashes[registeredKey] = nil
             forcedStateKeys.insert(registeredKey)
         }

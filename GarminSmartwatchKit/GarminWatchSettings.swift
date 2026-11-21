@@ -135,6 +135,18 @@ public struct GarminPayloadContent: OptionSet, Hashable, Sendable {
     public static let all: GarminPayloadContent = [.attributes, .colorScheme, .forecast, .timeInRange]
 }
 
+/// How a watch app's "status" request is answered.
+public enum GarminStatusReply: Equatable, Sendable {
+    /// With the state even when the app already confirmed it: a watch app or glance
+    /// just opened starts empty.
+    case always
+    /// Only with what the app hasn't got, as Trio's built-in Garmin support answers. A
+    /// watchface's or datafield's background keeps what it was sent. Answering every
+    /// request as well as sending each change kept the Trio and SwissAlpine watchfaces
+    /// a reading or more behind, the lag growing until the watchface was reinstalled.
+    case whenChanged
+}
+
 /// The Connect IQ watch apps that take the watchface slot.
 public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashable, Sendable {
     public var id: String { rawValue }
@@ -176,6 +188,15 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         switch self {
         case .trio, .swissalpine, .complication: return [.attributes, .colorScheme]
         case .watchAID: return [.colorScheme, .forecast, .timeInRange]
+        }
+    }
+
+    /// The watchfaces keep what they were sent; the Complication app and WatchAID
+    /// start empty.
+    public var statusReply: GarminStatusReply {
+        switch self {
+        case .trio, .swissalpine: return .whenChanged
+        case .complication, .watchAID: return .always
         }
     }
 
@@ -235,6 +256,41 @@ public enum GarminDatafield: String, CaseIterable, Identifiable, Codable, Hashab
         switch self {
         case .trio, .swissalpine: return .attributes
         case .none: return []
+        }
+    }
+
+    /// A datafield keeps what it was sent.
+    public var statusReply: GarminStatusReply { .whenChanged }
+}
+
+/// One of the chosen watch apps, as the plugin sends to it: the watchface or the
+/// datafield. What the plugin needs to know about an app it sends to is asked here,
+/// and each answer comes from the watchface's or datafield's own property.
+public enum GarminChosenApp: Equatable, Sendable {
+    case watchface(GarminWatchface)
+    case datafield(GarminDatafield)
+
+    /// What the app reads beyond the values every app shows.
+    public var payloadContent: GarminPayloadContent {
+        switch self {
+        case let .watchface(watchface): return watchface.payloadContent
+        case let .datafield(datafield): return datafield.payloadContent
+        }
+    }
+
+    /// How the app's "status" request is answered.
+    public var statusReply: GarminStatusReply {
+        switch self {
+        case let .watchface(watchface): return watchface.statusReply
+        case let .datafield(datafield): return datafield.statusReply
+        }
+    }
+
+    /// "watchface:Trio", as the device log names it.
+    var logName: String {
+        switch self {
+        case let .watchface(watchface): return "watchface:\(watchface.displayName)"
+        case let .datafield(datafield): return "datafield:\(datafield.displayName)"
         }
     }
 }
