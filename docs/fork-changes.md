@@ -15,6 +15,14 @@ This file is for the fork only: leave it out of upstream PRs.
 
 ## Still to PR, in a sensible order
 
+First, before the list: **24 entries at most for SwissAlpine and the complication
+app** (2026-11-25). It fixes 9eea7ff (history by time), which is on dabear's main.
+Real readings come a little under 5 minutes apart, so the 2 h span sometimes held a
+25th; SwissAlpine leaves such a message out and shows ">30 m" with the glucose
+crossed out until a 24-entry one comes. In a Loop test every message the face left
+out had 25 entries, and every one it showed had 24. Trio's own Garmin support sends
+24.
+
 0. **Other apps' readings fill the host's gaps** (2026-11-16): a fix to PR #3's
    own-readings filter, so goes first, on its own. It dropped every other app's
    reading older than the host's newest own one, so hours where Loop heard no CGM

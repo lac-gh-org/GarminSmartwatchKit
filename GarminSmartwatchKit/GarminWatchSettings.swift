@@ -215,6 +215,15 @@ public enum GarminWatchface: String, CaseIterable, Identifiable, Codable, Hashab
         }
     }
 
+    /// The most entries the watch app takes, the newest included; `nil` for no limit.
+    /// 24, as Trio's own Garmin support sends: SwissAlpine leaves out a message with 25.
+    public var maxEntries: Int? {
+        switch self {
+        case .swissalpine, .complication: return 24
+        case .trio, .watchAID: return nil
+        }
+    }
+
     /// The least time between two readings the watch app gets. With 5 minutes a
     /// 1-minute CGM sends every 5th reading, so these apps get as many readings, as
     /// far apart, as with a 5-minute CGM.

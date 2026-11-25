@@ -15,11 +15,12 @@ import Testing
         historySpacing: GarminWatchface.trio.historySpacing
     )
 
-    /// What SwissAlpine and the complication app get: 2 h, 5 minutes apart.
+    /// What SwissAlpine and the complication app get: 2 h, 5 minutes apart, 24 at most.
     private var withHistory: GarminWatchState.DisplayOptions {
         var options = options
         options.historySpan = GarminWatchface.swissalpine.historySpan
         options.historySpacing = GarminWatchface.swissalpine.historySpacing
+        options.maxEntries = GarminWatchface.swissalpine.maxEntries
         return options
     }
 
@@ -217,6 +218,14 @@ import Testing
         #expect(states.map(\.sgv) == (0 ..< 24).map { Int16(100 + $0) as Int16? })
     }
 
+    @Test("Readings a little under 5 minutes apart still send no more than 24") func readingsUnderFiveMinutes() {
+        // 4:59 apart: a 25th reading falls inside the 2 h.
+        let history = (0 ..< 30).map { reading(minutesAgo: Double($0) * (5 - 1.0 / 60), 100 + Double($0)) }
+        let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
+
+        #expect(states.map(\.sgv) == (0 ..< 24).map { Int16(100 + $0) as Int16? }, "SwissAlpine shows a 25th as stale")
+    }
+
     @Test("A gap stays a gap: nothing is filled in") func gap() {
         let history = [0.0, 5, 10, 50, 55].map { reading(minutesAgo: $0, 100 + $0) }
         let states = GarminWatchState.states(from: hostData(history: history), options: withHistory, now: now)
@@ -228,6 +237,7 @@ import Testing
     @Test("A span beyond the host's 3 h gets every reading the host sent") func historyBeyondInterval() {
         var longer = withHistory
         longer.historySpan = 4 * 60 * 60
+        longer.maxEntries = nil
         let states = GarminWatchState.states(from: hostData(history: series(every: 5, for: 180)), options: longer, now: now)
 
         #expect(states.count == 37)

@@ -250,6 +250,7 @@ public final class GarminSmartwatchManager: NSObject {
             glucoseColorScheme: settings.glucoseColorScheme.rawValue,
             historySpan: settings.watchface.historySpan,
             historySpacing: settings.watchface.historySpacing,
+            maxEntries: settings.watchface.maxEntries,
             hostName: Self.hostName,
             timeInRangePeriod: settings.isTimeInRangeEnabled ? settings.timeInRangePeriod : nil,
             timeInRangeTarget: settings.timeInRangeTarget
