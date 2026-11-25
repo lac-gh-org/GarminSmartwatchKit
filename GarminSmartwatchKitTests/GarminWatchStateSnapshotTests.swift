@@ -565,6 +565,8 @@ import Testing
         var issued: [Alert] = []
         var retracted: [Alert.Identifier] = []
         var logs: [String] = []
+        /// How many times the plugin read the host's glucose, once per host data read.
+        var reads = 0
         func smartwatchManagerDidUpdateState(_: SmartwatchManager) {}
         func smartwatchManagerWantsDeletion(_: SmartwatchManager) async {}
         func deviceManager(_: DeviceManager, logEventForDeviceIdentifier _: String?, type _: DeviceLogEntryType, message: String, completion _: ((Error?) -> Void)?) {
@@ -577,7 +579,10 @@ import Testing
         func lookupAllUnacknowledgedUnretracted(managerIdentifier _: String) async throws -> [PersistedAlert] { [] }
         func recordRetractedAlert(_: Alert, at _: Date) async throws {}
         func smartwatchManagerGlucoseDisplayUnit(_: SmartwatchManager) async -> LoopUnit { .milligramsPerDeciliter }
-        func smartwatchManager(_: SmartwatchManager, glucoseSamplesSince _: Date) async throws -> [StoredGlucoseSample] { [] }
+        func smartwatchManager(_: SmartwatchManager, glucoseSamplesSince _: Date) async throws -> [StoredGlucoseSample] {
+            reads += 1
+            return []
+        }
         func smartwatchManagerLoopState(_: SmartwatchManager) async -> SmartwatchLoopState {
             SmartwatchLoopState(lastLoopCompleted: nil, isClosedLoop: false)
         }
@@ -594,6 +599,28 @@ import Testing
     }
 
     private func settle() async { try? await Task.sleep(nanoseconds: 100_000_000) }
+
+    @MainActor @Test("A new reading waits for the loop's result, which is read at once; without one the reading goes alone") func readingWaitsForLoop() async {
+        let host = Host()
+        let manager = GarminSmartwatchManager()
+        manager.glucoseWaitForLoop = 0.5
+        manager.smartwatchManagerDelegate = host
+        await settle()
+        let start = host.reads
+
+        manager.hostDataDidChange(.glucose)
+        await settle()
+        #expect(host.reads == start, "Waiting for the loop's result")
+        manager.hostDataDidChange(.loop)
+        await settle()
+        #expect(host.reads == start + 1, "The loop's result is read at once")
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        #expect(host.reads == start + 1, "The reading's wait was cancelled: one read, one message")
+
+        manager.hostDataDidChange(.glucose)
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        #expect(host.reads == start + 2, "No loop result: the reading is read after the wait")
+    }
 
     @MainActor @Test("Garmin Connect missing raises a time-sensitive host alert; deleting the plugin retracts it") func connectMobileMissing() async {
         let host = Host()

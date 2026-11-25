@@ -78,6 +78,10 @@ public final class GarminSmartwatchManager: NSObject {
     /// Wait before the single resend of a failed message.
     var sendRetryDelay: TimeInterval = 2
 
+    /// How long a new reading waits for the loop's result before it goes alone; Trio's
+    /// built-in Garmin support waits 10 s (`glucoseFallbackDelay`).
+    var glucoseWaitForLoop: TimeInterval = 10
+
     // MARK: - Delivery
 
     /// What an app is still owed after its send failed for good; the latest state wins. Main queue only.
@@ -775,7 +779,16 @@ extension GarminSmartwatchManager: SmartwatchManager {
               let delegate = smartwatchManagerDelegate
         else { return }
         readTask?.cancel()
-        readTask = Task { [weak self] in
+        // A new reading is followed by the loop's result within seconds: wait for it, as
+        // Trio's built-in Garmin support does, so the watch gets one message per reading
+        // rather than one for the reading and another for the loop. The loop's change
+        // cancels this wait; without one, the reading goes alone after the wait.
+        let waitsForLoop = changes.intersection([.glucose, .loop, .presets, .settings]) == .glucose
+        readTask = Task { [weak self, glucoseWaitForLoop] in
+            if waitsForLoop {
+                try? await Task.sleep(nanoseconds: UInt64(glucoseWaitForLoop * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+            }
             guard let self else { return }
             let host = await self.readHostData(from: delegate)
             guard !Task.isCancelled else { return }
