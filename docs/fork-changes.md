@@ -49,6 +49,24 @@ This file is for the fork only: leave it out of upstream PRs.
    takes its default instead of resetting all of them. Worth upstream on its own:
    without it, any new setting resets every user's Garmin settings on update.
 
+## Host side, not in this repo
+
+Changes on our host branches (TrioGarminTest `watch-plugins-test-trio-app`,
+LoopWorkspaceGarminTest `smartwatch-manager-review-garmin-app`) beyond dabear's,
+to PR with the host side of the plugin work (his branches, then Trio or Loop).
+
+- **Trio host reacts to content changes only** (2026-11-25): `SmartwatchHost.swift`
+  observes readings, loop results, overrides and temp targets through
+  `contentChangePublisher` instead of `entityChangePublisher`, so an update that only
+  sets an upload flag (Nightscout, Health, Tidepool) no longer makes the kit re-read
+  the host. Trio dev made the same change in its GarminManager and Apple Watch
+  manager (94d28b8bc); `GarminManager.swift` is deleted on the plugin branches, so a
+  merge of dev can't carry it over. dabear's `watch-plugins-test` hits the same when
+  it merges dev.
+- Our Trio branch merged nightscout/Trio dev 1.0.2.88 (9e9e5fc9e) ahead of dabear's
+  branch: dev moved the Xcode project to synced folders, so the project file is
+  dev's plus the four smartwatch plugin frameworks, linked and embedded as before.
+
 ## Fork only, never upstream
 
 - The Trio App entry (ce95517, c836811), removed again in ff0a8d0: net zero.
