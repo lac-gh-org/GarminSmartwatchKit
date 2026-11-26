@@ -1,7 +1,8 @@
 # Changes on lac-gh-org's `trio-app` not yet in dabear's `main`
 
-What this fork's `trio-app` (and `loop-app`, which merges it) carries beyond
-dabear/GarminSmartwatchKit `main`, so each can go upstream as its own small PR.
+What this fork's `trio-app` carries beyond dabear/GarminSmartwatchKit `main`, so
+each can go upstream as its own small PR. Both our Trio and Loop branches use
+`trio-app`.
 Keep this list up to date with each change; drop an entry once it's merged.
 
 This file is for the fork only: leave it out of upstream PRs.
